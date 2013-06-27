@@ -15,6 +15,8 @@
 #include <iostream>
 #include "vtkCellArray.h"
 #include "time.h"
+#include "algorithm"
+#include <cmath>
 using namespace std;
 
 #define STEP_X 1
@@ -24,6 +26,9 @@ using namespace std;
 #define Y_MAX 90
 #define Y_MIN -90
 #define TEST_QUAD 0
+#define TEST_PARALLEL 0
+#define TEST_LINKED_LIST_METHOD 0
+#define EPS 0.00001
 
 static int rangeX = X_MAX - X_MIN;
 static int rangeY = Y_MAX - Y_MIN;
@@ -43,6 +48,17 @@ struct point
         y = _y;
     }
     point(){};
+};
+
+struct IndexPair
+{
+    int is;
+    int ic;
+    IndexPair(int _is, int _ic)
+    {
+        is = _is;
+        ic = _ic;
+    }
 };
 
 #if TEST_QUAD
@@ -160,9 +176,10 @@ inline int max(int x1, int x2, int x3, int x4)
 }
 #else
 
-inline int min(int x1, int x2, int x3)
+template<typename T>
+inline T min(T x1, T x2, T x3)
 {
-    int xmin;
+    T xmin;
     if(x1 < x2)
         xmin = x1;
     else
@@ -176,9 +193,10 @@ inline int min(int x1, int x2, int x3)
     return xmin;
 }
 
-inline int max(int x1, int x2, int x3)
+template<typename T>
+inline T max(T x1, T x2, T x3)
 {
-    int xmax;
+    T xmax;
     if(x1 > x2)
         xmax = x1;
     else
@@ -691,6 +709,7 @@ vector<vector<point> > clip(quad q_s, quad q_c)
 }
 #else
 
+#if TEST_LINKED_LIST_METHOD
 vector<point> clip(triangle t_s, triangle t_c)
 {
  //   cout<<"cnt:"<<cnt++<<endl;
@@ -796,7 +815,491 @@ vector<point> clip(triangle t_s, triangle t_c)
     FreeList(root);
     return clipped;
 }
-#endif
+#else //#if TEST_LINKED_LIST_METHOD
+struct pt
+{
+    float x;
+    float y;
+ //   bool in;    //either inside or intersection point
+    float loc;
+    pt(float _x, float _y)
+    {
+        x = _x;
+        y = _y;
+        loc = -1;
+    }
+    pt()
+    {
+        loc = -1;
+    }
+};
+
+struct trgl
+{
+    //the first 3 points are the vertex
+    //others are reserved forintersection points
+    pt p[9];
+};
+
+/*
+bool compareByLoc(const pt &a, const pt &b)
+{
+    return  a.in && b.in && a.loc < b.loc;
+}
+
+bool compareByIn(const pt &a, const pt &b)
+{
+    return a.in && !b.in;
+}
+
+//when the loc is integer, it is the vertex,
+//otherwise it is the intersection point
+inline bool isVert(pt p)
+{
+    return (p.loc == 0 || p.loc == 1 || p.loc == 2);
+}
+
+inline void GetClipped1(trgl ts, trgl tc, std::vector<pt> &clipped_vert)
+{
+    //c[0], c[3], s[0], s[3]
+    //find the inside point in c
+    pt inPt;
+    for(int i = 0; i < 3; i++)
+    {
+        if(tc.p[i].in)
+        {
+            inPt = tc.p[i];
+            break;
+        }
+    }
+    //at most 4 intersection points in this case
+    std::vector<pt> vert(ts.p, ts.p + 7);
+    std::sort(vert.begin(), vert.end(), compareByIn);
+    std::sort(vert.begin(), vert.end(), compareByLoc);
+    bool prevVert = false;  //whether previous one is a vertex
+    //insert the vertex from constraint triangle after an intersection point
+    //in the subject triangle
+    for(int i = 0; i < 6; i++)
+    {
+        pt cur_Pt = vert[i];
+        bool curVert = isVert(cur_Pt);//whether current point is a vertex
+        if(cur_Pt.in )
+        {
+            //if multiple adjacent points has the same loc
+            //pick the last one
+            if((cur_Pt.loc != vert[(i + 1) % 6].loc))
+            {
+                clipped_vert.push_back(cur_Pt);
+                //make sure the current one is not vertex
+                //because we want to insert after an intersection point
+                //two inside points has to be seperated by vertex in the clipped polygon
+                if(prevVert && !curVert)
+                {
+                    clipped_vert.push_back(inPt);
+                    prevVert = false;
+                }
+            }
+        }
+        else
+            break;
+        prevVert = curVert;
+    }
+}
+*/
+inline bool BIntersect(pt p1, pt p2, pt q1, pt q2)
+{
+  float  tp, tq, par;
+
+  par = (float) ((p2.x - p1.x)*(q2.y - q1.y) -
+                 (p2.y - p1.y)*(q2.x - q1.x));
+
+  if (!par) return 0;                               /* parallel lines */
+  tp = ((q1.x - p1.x)*(q2.y - q1.y) - (q1.y - p1.y)*(q2.x - q1.x))/par;
+  tq = ((p2.y - p1.y)*(q1.x - p1.x) - (p2.x - p1.x)*(q1.y - p1.y))/par;
+
+  //touching the boundary is not inside
+  if(tp<=0 || tp>=1 || tq<=0 || tq>=1) return 0;
+
+  return 1;
+}
+
+//touching boundary is also intersect
+inline bool BIntersectIncludeBoundary(pt p1, pt p2, pt q1, pt q2)
+{
+  float  tp, tq, par;
+
+  par = (float) ((p2.x - p1.x)*(q2.y - q1.y) -
+                 (p2.y - p1.y)*(q2.x - q1.x));
+
+  if (!par) return 0;                               /* parallel lines */
+  tp = ((q1.x - p1.x)*(q2.y - q1.y) - (q1.y - p1.y)*(q2.x - q1.x))/par;
+  tq = ((p2.y - p1.y)*(q1.x - p1.x) - (p2.x - p1.x)*(q1.y - p1.y))/par;
+
+  //touching the boundary is not inside
+  if(tp<0 || tp>1 || tq<0 || tq>1) return 0;
+
+  return 1;
+}
+
+inline void Intersect(pt p1, pt p2, pt q1, pt q2,
+        pt &pi, pt &qi)
+{
+    float tp, tq, par;
+
+    par = (float) ((p2.x - p1.x)*(q2.y - q1.y) -
+                   (p2.y - p1.y)*(q2.x - q1.x));
+
+    if (!par)
+        return;                               /* parallel lines */
+
+    tp = ((q1.x - p1.x)*(q2.y - q1.y) - (q1.y - p1.y)*(q2.x - q1.x))/par;
+    tq = ((p2.y - p1.y)*(q1.x - p1.x) - (p2.x - p1.x)*(q1.y - p1.y))/par;
+
+    if(tp<0 || tp>1 || tq<0 || tq>1)
+        return;
+
+//    pi.in = true;
+//    qi.in = true;
+    pi.x = p1.x + tp*(p2.x - p1.x);
+    pi.y = p1.y + tp*(p2.y - p1.y);
+    qi.x = pi.x;
+    qi.y = pi.y;
+
+    //this can be replaced with tp and tq with care
+    pi.loc = tp;// dist(p1.x, p1.y, x, y) / dist(p1.x, p1.y, p2.x, p2.y);
+    qi.loc = tq;// dist(q1.x, q1.y, x, y) / dist(q1.x, q1.y, q2.x, q2.y);
+}
+
+inline bool testInside(pt p, trgl t)
+{
+    bool inside = false;
+    pt left( -999, p.y);//create(0, point->y, 0, 0, 0, 0, 0, 0, 0, 0.);
+    for(int i = 0; i < 3; i++)
+    {
+        if(BIntersect(left, p, t.p[i], t.p[(i+1)%3]))
+            inside = !inside;
+    }
+    return inside;
+}
+/*
+inline void GetClipped0(trgl t, std::vector<pt> &clipped_vert)
+{
+    //sort the result in s
+    std::vector<pt> vert(t.p, t.p + 9);
+    //the sort can be improved
+    std::sort(vert.begin(), vert.end(), compareByIn);
+    std::sort(vert.begin(), vert.end(), compareByLoc);
+    //at most 6 vertices in the new polygon
+    for(int i = 0; i < 6; i++)
+    {
+        if(vert[i].in)
+        {
+            if(vert[i].loc != vert[(i + 1) % 6].loc)
+                clipped_vert.push_back(vert[i]);
+        }
+        else
+            break;
+    }
+}
+*/
+inline void AddIntersection(trgl ts, trgl tc, pt *clipped_array, int &clipped_cnt)
+{
+    for(int ic = 0; ic < 3; ic++)
+    {
+        for(int is = 0; is < 3; is++)
+        {
+            pt insect_s, insect_c;
+            Intersect(tc.p[ic], tc.p[(ic+1)%3], ts.p[is], ts.p[(is+1)%3 ],
+                    insect_c, insect_s);
+
+            if(insect_c.loc >= 0)
+            {
+                insect_c.loc += ic;
+                if(clipped_cnt > 0)
+                {
+                    if(insect_c.loc > clipped_array[clipped_cnt - 1].loc)
+                        clipped_array[clipped_cnt++] = insect_c;
+                    else if(insect_c.loc < clipped_array[clipped_cnt - 1].loc)
+                    {
+                        clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
+                        clipped_array[clipped_cnt - 1] = insect_c;
+                        clipped_cnt++;
+                    }
+                    //else :insect_c.loc == clipped_vert[isect_cnt - 1].loc
+                    //don't add anything
+                }
+                else
+                {
+                    clipped_array[0] = insect_c;
+                    clipped_cnt++;
+                }
+            }
+        }
+    }
+}
+
+//line(p1, p2) is parallel with line(q1, q2)
+inline bool parallel(pt p1, pt p2, pt q1, pt q2)
+{
+  float par = (float) ((p2.x - p1.x)*(q2.y - q1.y) -
+                 (p2.y - p1.y)*(q2.x - q1.x));
+  if(abs(par)<EPS)
+      return true;
+  else
+      return false;
+}
+
+vector<point> clipNoSort(triangle t_s, triangle t_c)
+{
+    vector<point> clipped;
+    trgl ts, tc;
+    int i = 0;
+    for(int i = 0; i < 3; i++)
+    {
+        ts.p[i].x = t_s.p[i].x;
+        ts.p[i].y = t_s.p[i].y;
+        tc.p[i].x = t_c.p[i].x;
+        tc.p[i].y = t_c.p[i].y;
+    }
+    float sx[2], sy[2], cx[2], cy[2];
+    sx[0] = min<float>(ts.p[0].x, ts.p[1].x, ts.p[2].x);
+    cx[1] = max<float>(tc.p[0].x, tc.p[1].x, tc.p[2].x);
+    if(sx[0] >= cx[1])
+        return clipped;
+
+    sy[0] = min<float>(ts.p[0].y, ts.p[1].y, ts.p[2].y);
+    cy[1] = max<float>(tc.p[0].y, tc.p[1].y, tc.p[2].y);
+    if(sy[0] >= cy[1])
+        return clipped;
+
+    cx[0] = min<float>(tc.p[0].x, tc.p[1].x, tc.p[2].x);
+    sx[1] = max<float>(ts.p[0].x, ts.p[1].x, ts.p[2].x);
+    if(cx[0] >= sx[1])
+        return clipped;
+
+    cy[0] = min<float>(tc.p[0].y, tc.p[1].y, tc.p[2].y);
+    sy[1] = max<float>(ts.p[0].y, ts.p[1].y, ts.p[2].y);
+    if(cy[0] >= sy[1])
+        return clipped;
+
+    i = 0;
+    //mark inside or outside for the triangle vertices
+    //and count the number of inside vertices
+    int cnt_in_s = 0, cnt_in_c = 0;
+    for(i = 0; i < 3; i++)
+    {
+ //       tc.p[i].loc = i;
+        if(tc.p[i].loc = testInside(tc.p[i], ts))
+        {
+//            inPtC[cnt_in_c++] = tc.p[i];
+           cnt_in_c++;
+        }
+
+ //       ts.p[i].loc = i;
+        if(ts.p[i].loc = testInside(ts.p[i], tc))
+        {
+//            inPtS[cnt_in_s++] = ts.p[i];
+            cnt_in_s++;
+        }
+
+    }
+
+    //make the "in" vertices in the front of the array
+    int a[3] = {0, 1, 0};
+    for(i = 0; i < 3; i++)
+    {
+        int idx = a[i];
+        if(!tc.p[idx].loc && tc.p[idx + 1].loc)
+            swap(tc.p[idx], tc.p[idx + 1]);
+        if(!ts.p[idx].loc && ts.p[idx + 1].loc)
+            swap(ts.p[idx], ts.p[idx + 1]);
+    }
+
+    pt clipped_array[6];
+
+    int clipped_cnt = 0;
+    if(0 == cnt_in_c && 0 == cnt_in_s)
+    {
+        AddIntersection(ts, tc, clipped_array, clipped_cnt);
+    }
+    else if(0 == cnt_in_c && 1 == cnt_in_s)
+    {
+        AddIntersection(tc, ts, clipped_array, clipped_cnt);
+        clipped_array[clipped_cnt++] = ts.p[0];
+    }
+    else if(1 == cnt_in_c && 0 == cnt_in_s)
+    {
+        AddIntersection(ts, tc, clipped_array, clipped_cnt);
+        clipped_array[clipped_cnt++] = tc.p[0];
+    }
+    else if(2 == cnt_in_c && 0 == cnt_in_s)
+    {
+        AddIntersection(ts, tc, clipped_array, clipped_cnt);
+        clipped_array[clipped_cnt++] = tc.p[0];
+        clipped_array[clipped_cnt++] = tc.p[1];
+    }
+    else if(0 == cnt_in_c && 2 == cnt_in_s)
+    {
+        AddIntersection(tc, ts, clipped_array, clipped_cnt);
+        clipped_array[clipped_cnt++] = ts.p[0];
+        clipped_array[clipped_cnt++] = ts.p[1];
+    }
+    else if(2 == cnt_in_c && 1 == cnt_in_s)
+    {
+        AddIntersection(ts, tc, clipped_array, clipped_cnt);
+        clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
+        clipped_array[clipped_cnt - 1] = ts.p[0];
+        clipped_cnt++;
+        clipped_array[clipped_cnt++] = tc.p[0];
+        clipped_array[clipped_cnt++] = tc.p[1];
+    }
+    else if(1 == cnt_in_c && 2 == cnt_in_s)
+    {
+        AddIntersection(tc, ts, clipped_array, clipped_cnt);
+        clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
+        clipped_array[clipped_cnt - 1] = tc.p[0];
+        clipped_cnt++;
+        clipped_array[clipped_cnt++] = ts.p[0];
+        clipped_array[clipped_cnt++] = ts.p[1];
+    }
+    else if(1 == cnt_in_c && 1 == cnt_in_s
+            && BIntersectIncludeBoundary(ts.p[1], ts.p[2], tc.p[1], tc.p[2]))
+    {
+        AddIntersection(ts, tc, clipped_array, clipped_cnt);
+        if(parallel(clipped_array[0], ts.p[2], ts.p[1], clipped_array[0]))
+        {
+            clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
+            clipped_array[clipped_cnt - 1] = ts.p[0];
+            clipped_cnt++;
+            clipped_array[clipped_cnt++] = tc.p[0];
+        }
+        else
+        {
+            for(int j = clipped_cnt - 1; j > 0; j--)
+            {
+                clipped_array[j + 1] = clipped_array[j];
+            }
+            clipped_array[1] = ts.p[0];
+            clipped_cnt++;
+            clipped_array[clipped_cnt++] = tc.p[0];
+        }
+    }
+    else//(1 == cnt_in_c && 1 == cnt_in_s
+     //   && !BIntersectIncludeBoundary(ts.p[1], ts.p[2], tc.p[1], tc.p[2]))
+    {
+        AddIntersection(ts, tc, clipped_array, clipped_cnt);
+        clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
+        clipped_array[clipped_cnt - 1] = ts.p[0];
+        clipped_cnt++;
+        clipped_array[clipped_cnt++] = tc.p[0];
+    }
+
+
+//    else if(0 == cnt_in_s)
+//    {
+//        GetClipped0(tc, clipped_vert);
+//    }
+//    else if(1 == cnt_in_c)  //sort s, and insert the one from c
+//    {
+//        GetClipped1(ts, tc, clipped_vert);
+//    }
+//    else// if(1 == cnt_in_s)
+//    {
+//        GetClipped1(tc, ts, clipped_vert);
+//    }
+
+
+    for(int i = 0; i < clipped_cnt; i++)
+    {
+        point p(clipped_array[i].x, clipped_array[i].y);
+        clipped.push_back(p);
+    }
+    return clipped;
+}
+
+/*
+vector<point> clip(triangle t_s, triangle t_c)
+{
+    trgl ts, tc;
+    int i = 0;
+    for(int i = 0; i < 3; i++)
+    {
+        ts.p[i].x = t_s.p[i].x;
+        ts.p[i].y = t_s.p[i].y;
+        tc.p[i].x = t_c.p[i].x;
+        tc.p[i].y = t_c.p[i].y;
+    }
+
+    i = 0;
+    //mark inside or outside for the triangle vertices
+    //and count the number of inside vertices
+    int cnt_in_s = 0, cnt_in_c = 0;
+    for(i = 0; i < 3; i++)
+    {
+        if(tc.p[i].in = testInside(tc.p[i], ts))
+           cnt_in_c++;
+        tc.p[i].loc = i;
+
+        if(ts.p[i].in = testInside(ts.p[i], tc))
+            cnt_in_s++;
+        ts.p[i].loc = i;
+    }
+    //compute intersection point
+
+    std::vector<pt> clipped_vert;
+
+    int cnt = 0;//count of intersection points
+    for(int ic = 0; ic < 3; ic++)
+        for(int is = 0; is < 3; is++)
+        {
+            pt insect_s, insect_c;
+            Intersect(tc.p[ic], tc.p[(ic+1)%3], ts.p[is], ts.p[(is+1)%3 ],
+                    insect_c, insect_s);
+            if(insect_c.in)
+            {
+                int i = cnt + 3;
+                tc.p[i] = insect_c;
+                ts.p[i] = insect_s;
+                tc.p[i].loc += ic;
+                ts.p[i].loc += is;
+                if(tc.p[i].loc == 3)
+                    tc.p[i].loc = 0;
+                if(ts.p[i].loc == 3)
+                    ts.p[i].loc = 0;
+                cnt++;
+            }
+        }
+
+    if(0 == cnt_in_c)
+    {
+        GetClipped0(ts, clipped_vert);
+    }
+    else if(0 == cnt_in_s)
+    {
+        GetClipped0(tc, clipped_vert);
+    }
+    else if(1 == cnt_in_c)  //sort s, and insert the one from c
+    {
+        GetClipped1(ts, tc, clipped_vert);
+    }
+    else// if(1 == cnt_in_s)
+    {
+        GetClipped1(tc, ts, clipped_vert);
+    }
+
+    vector<point> clipped;
+    for(int i = 0; i < clipped_vert.size(); i++)
+    {
+        point p(clipped_vert[i].x, clipped_vert[i].y);
+        clipped.push_back(p);
+    }
+    return clipped;
+}
+*/
+#endif      //#if TEST_LINKED_LIST_METHOD
+
+
+#endif //TEST_QUAD
 
 #if TEST_QUAD
 //clip two set of cells
@@ -839,6 +1342,8 @@ vector<vector<point> > clipSets(vector<triangle> t_s, vector<triangle> t_c, vect
     vector<vector<point> > clippedAll;
     int ic;
     //for each quad in subject set
+
+    vector<IndexPair> polyPairs;     //pair of polygons that need to be tested
     for(int is = 0; is < t_s.size(); is++)
     {
      //   is = 7162;
@@ -854,11 +1359,9 @@ vector<vector<point> > clipSets(vector<triangle> t_s, vector<triangle> t_c, vect
             for(int i = 0; i < cellIdx_c.size(); i++)
             {
                 ic = cellIdx_c[i];
-
+                IndexPair pr(is, ic);
+                polyPairs.push_back(pr);
        //         ic = 6596;
-                vector<point> clipped = clip(t_c[ic], s);
-                if(clipped.size()>0)
-                    clippedAll.push_back(clipped);
             }
         }
 #if 0
@@ -867,11 +1370,34 @@ vector<vector<point> > clipSets(vector<triangle> t_s, vector<triangle> t_c, vect
             onePoly.push_back(s.p[i]);
         clippedAll.push_back(onePoly);
 #endif
-        if((is % 1000) == 0)
-            cout<<"is = "<<is<<endl;
+
+    }
+#if TEST_PARALLEL
+
+#else
+
+
+    for(int i = 0; i < polyPairs.size(); i++)
+    {
+#if TEST_LINKED_LIST_METHOD
+        vector<point> clipped = clip(t_c[polyPairs[i].ic], t_s[polyPairs[i].is]);
+#else
+   //     vector<point> clipped = clip(t_c[polyPairs[i].ic], t_s[polyPairs[i].is]);
+        vector<point> clipped = clipNoSort(t_c[polyPairs[i].ic], t_s[polyPairs[i].is]);
+#endif
+        if(clipped.size()>0)
+            clippedAll.push_back(clipped);
+        if((i % 1000) == 0)
+            cout<<"i = "<<i<<endl;
     }
     return clippedAll;
+
+
+#endif
+
 }
+
+
 #endif
 
 void writePolygonFile(char* filename, vector<vector<point> > poly)
