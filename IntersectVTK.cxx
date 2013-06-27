@@ -399,96 +399,133 @@ vector<point> clip(triangle t_s, triangle t_c)
             swap(ts.p[idx], ts.p[idx + 1]);
     }
 
-    bool test1, test2;
+    bool test;
     if(1 == cnt_in_c && 1 == cnt_in_s)
     {
-        test1 = BIntersectIncludeBoundary(ts.p[1], ts.p[2], tc.p[1], tc.p[2]);
+      //  test1 = BIntersectIncludeBoundary(ts.p[1], ts.p[2], tc.p[1], tc.p[2]);
         //if(test1)
-        test2 = BIntersectIncludeBoundary(ts.p[1], ts.p[2], tc.p[0], tc.p[1]);
+        test = BIntersectIncludeBoundary(ts.p[1], ts.p[2], tc.p[0], tc.p[1]);
     }
+
+    int state = 0;
+    if(0 == cnt_in_c && 0 == cnt_in_s)
+        state = 1;
+    else if(0 == cnt_in_c && 1 == cnt_in_s)
+        state = 2;
+    else if(1 == cnt_in_c && 0 == cnt_in_s)
+        state = 3;
+    else if(0 == cnt_in_c && 2 == cnt_in_s)
+        state = 4;
+    else if(2 == cnt_in_c && 0 == cnt_in_s)
+        state = 5;
+    else if(0 == cnt_in_c && 3 == cnt_in_s)
+        state = 6;
+    else if(3 == cnt_in_c && 0 == cnt_in_s)
+        state = 7;
+    else if(1 == cnt_in_c && 2 == cnt_in_s)
+        state = 8;
+    else if(2 == cnt_in_c && 1 == cnt_in_s)
+        state = 9;
+    else if(1 == cnt_in_c && 1 == cnt_in_s && !test)
+        state = 10;
+    else// if(1 == cnt_in_c && 1 == cnt_in_s && !test1) and (1 == cnt_in_c && 1 == cnt_in_s && test1 && test2)
+        state = 11;
 
     pt clipped_array[6];
 
     int clipped_cnt = 0;
-    if(0 == cnt_in_c && 0 == cnt_in_s)
+    if(1 == state)
     {
         AddIntersection(ts, tc, clipped_array, clipped_cnt);
     }
-    else if(0 == cnt_in_c && 1 == cnt_in_s)
+    else if(2 == state)
     {
         AddIntersection(tc, ts, clipped_array, clipped_cnt);
+        //+s0
         clipped_array[clipped_cnt++] = ts.p[0];
     }
-    else if(1 == cnt_in_c && 0 == cnt_in_s)
+    else if(3 == state)
     {
         AddIntersection(ts, tc, clipped_array, clipped_cnt);
+        //+c0
         clipped_array[clipped_cnt++] = tc.p[0];
     }
-    else if(0 == cnt_in_c && 2 == cnt_in_s)
+    else if(4 == state)
     {
         AddIntersection(tc, ts, clipped_array, clipped_cnt);
+        //+s0
         clipped_array[clipped_cnt++] = ts.p[0];
+        //+s1
         clipped_array[clipped_cnt++] = ts.p[1];
     }
-    else if(2 == cnt_in_c && 0 == cnt_in_s)
+    else if(5 == state)
     {
         AddIntersection(ts, tc, clipped_array, clipped_cnt);
+        //+c0
         clipped_array[clipped_cnt++] = tc.p[0];
+        //+c1
         clipped_array[clipped_cnt++] = tc.p[1];
     }
-    else if(0 == cnt_in_c && 3 == cnt_in_s)
+    else if(6 == state)
     {
+        //+s0
         clipped_array[clipped_cnt++] = ts.p[0];
+        //+s1
         clipped_array[clipped_cnt++] = ts.p[1];
+        //+s2
         clipped_array[clipped_cnt++] = ts.p[2];
     }
-    else if(3 == cnt_in_c && 0 == cnt_in_s)
+    else if(7 == state)
     {
+        //+c0
         clipped_array[clipped_cnt++] = tc.p[0];
+        //+c1
         clipped_array[clipped_cnt++] = tc.p[1];
+        //+c2
         clipped_array[clipped_cnt++] = tc.p[2];
     }
-    else if(1 == cnt_in_c && 2 == cnt_in_s)
+    else if(8 == state)
     {
         AddIntersection(tc, ts, clipped_array, clipped_cnt);
+        //+c0-
         clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
         clipped_array[clipped_cnt - 1] = tc.p[0];
         clipped_cnt++;
+        //+s0
         clipped_array[clipped_cnt++] = ts.p[0];
+        //+s1
         clipped_array[clipped_cnt++] = ts.p[1];
     }
-    else if(2 == cnt_in_c && 1 == cnt_in_s)
+    else if(9 == state)
     {
         AddIntersection(ts, tc, clipped_array, clipped_cnt);
+        //+s0-
         clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
         clipped_array[clipped_cnt - 1] = ts.p[0];
         clipped_cnt++;
+        //+c0
         clipped_array[clipped_cnt++] = tc.p[0];
+        //+c1
         clipped_array[clipped_cnt++] = tc.p[1];
     }
-    else if(1 == cnt_in_c && 1 == cnt_in_s
-            && test1 && test2)
+    else if(10 == state)
     {
         AddIntersection(ts, tc, clipped_array, clipped_cnt);
-        clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
-        clipped_array[clipped_cnt - 1] = ts.p[0];
-        clipped_cnt++;
+        //+c0
         clipped_array[clipped_cnt++] = tc.p[0];
-    }
-    else if(1 == cnt_in_c && 1 == cnt_in_s
-            && test1 && !test2)
-    {
-        AddIntersection(ts, tc, clipped_array, clipped_cnt);
-        clipped_array[clipped_cnt++] = tc.p[0];
+        //+r0
         clipped_array[clipped_cnt++] = clipped_array[0];
+        //+r0_s0
         clipped_array[0] = ts.p[0];
     }
-    else if(1 == cnt_in_c && 1 == cnt_in_s && !test1)
+    else if(11 == state)
     {
         AddIntersection(ts, tc, clipped_array, clipped_cnt);
+        //+s0-
         clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
         clipped_array[clipped_cnt - 1] = ts.p[0];
         clipped_cnt++;
+        //+c0
         clipped_array[clipped_cnt++] = tc.p[0];
     }
     else
