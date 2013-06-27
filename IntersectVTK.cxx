@@ -241,11 +241,15 @@ inline bool BIntersectIncludeBoundary(pt p1, pt p2, pt q1, pt q2)
                  (p2.y - p1.y)*(q2.x - q1.x));
 
   if (!par) return 0;                               /* parallel lines */
-  tp = ((q1.x - p1.x)*(q2.y - q1.y) - (q1.y - p1.y)*(q2.x - q1.x))/par;
-  tq = ((p2.y - p1.y)*(q1.x - p1.x) - (p2.x - p1.x)*(q1.y - p1.y))/par;
 
+  tp = ((q1.x - p1.x)*(q2.y - q1.y) - (q1.y - p1.y)*(q2.x - q1.x))/par;
+  if(tp<0 || tp>1 )
+      return 0;
+
+  tq = ((p2.y - p1.y)*(q1.x - p1.x) - (p2.x - p1.x)*(q1.y - p1.y))/par;
   //touching the boundary is not inside
-  if(tp<0 || tp>1 || tq<0 || tq>1) return 0;
+  if(tq<0 || tq>1)
+      return 0;
 
   return 1;
 }
@@ -377,20 +381,11 @@ vector<point> clip(triangle t_s, triangle t_c)
     int cnt_in_s = 0, cnt_in_c = 0;
     for(i = 0; i < 3; i++)
     {
- //       tc.p[i].loc = i;
         if(tc.p[i].loc = testInside(tc.p[i], ts))
-        {
-//            inPtC[cnt_in_c++] = tc.p[i];
            cnt_in_c++;
-        }
 
- //       ts.p[i].loc = i;
         if(ts.p[i].loc = testInside(ts.p[i], tc))
-        {
-//            inPtS[cnt_in_s++] = ts.p[i];
             cnt_in_s++;
-        }
-
     }
 
     //make the "in" vertices in the front of the array
@@ -402,6 +397,14 @@ vector<point> clip(triangle t_s, triangle t_c)
             swap(tc.p[idx], tc.p[idx + 1]);
         if(!ts.p[idx].loc && ts.p[idx + 1].loc)
             swap(ts.p[idx], ts.p[idx + 1]);
+    }
+
+    bool test1, test2;
+    if(1 == cnt_in_c && 1 == cnt_in_s)
+    {
+        test1 = BIntersectIncludeBoundary(ts.p[1], ts.p[2], tc.p[1], tc.p[2]);
+        //if(test1)
+        test2 = BIntersectIncludeBoundary(ts.p[1], ts.p[2], tc.p[0], tc.p[1]);
     }
 
     pt clipped_array[6];
@@ -421,15 +424,36 @@ vector<point> clip(triangle t_s, triangle t_c)
         AddIntersection(ts, tc, clipped_array, clipped_cnt);
         clipped_array[clipped_cnt++] = tc.p[0];
     }
+    else if(0 == cnt_in_c && 2 == cnt_in_s)
+    {
+        AddIntersection(tc, ts, clipped_array, clipped_cnt);
+        clipped_array[clipped_cnt++] = ts.p[0];
+        clipped_array[clipped_cnt++] = ts.p[1];
+    }
     else if(2 == cnt_in_c && 0 == cnt_in_s)
     {
         AddIntersection(ts, tc, clipped_array, clipped_cnt);
         clipped_array[clipped_cnt++] = tc.p[0];
         clipped_array[clipped_cnt++] = tc.p[1];
     }
-    else if(0 == cnt_in_c && 2 == cnt_in_s)
+    else if(0 == cnt_in_c && 3 == cnt_in_s)
+    {
+        clipped_array[clipped_cnt++] = ts.p[0];
+        clipped_array[clipped_cnt++] = ts.p[1];
+        clipped_array[clipped_cnt++] = ts.p[2];
+    }
+    else if(3 == cnt_in_c && 0 == cnt_in_s)
+    {
+        clipped_array[clipped_cnt++] = tc.p[0];
+        clipped_array[clipped_cnt++] = tc.p[1];
+        clipped_array[clipped_cnt++] = tc.p[2];
+    }
+    else if(1 == cnt_in_c && 2 == cnt_in_s)
     {
         AddIntersection(tc, ts, clipped_array, clipped_cnt);
+        clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
+        clipped_array[clipped_cnt - 1] = tc.p[0];
+        clipped_cnt++;
         clipped_array[clipped_cnt++] = ts.p[0];
         clipped_array[clipped_cnt++] = ts.p[1];
     }
@@ -442,45 +466,34 @@ vector<point> clip(triangle t_s, triangle t_c)
         clipped_array[clipped_cnt++] = tc.p[0];
         clipped_array[clipped_cnt++] = tc.p[1];
     }
-    else if(1 == cnt_in_c && 2 == cnt_in_s)
-    {
-        AddIntersection(tc, ts, clipped_array, clipped_cnt);
-        clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
-        clipped_array[clipped_cnt - 1] = tc.p[0];
-        clipped_cnt++;
-        clipped_array[clipped_cnt++] = ts.p[0];
-        clipped_array[clipped_cnt++] = ts.p[1];
-    }
     else if(1 == cnt_in_c && 1 == cnt_in_s
-            && BIntersectIncludeBoundary(ts.p[1], ts.p[2], tc.p[1], tc.p[2]))
-    {
-        AddIntersection(ts, tc, clipped_array, clipped_cnt);
-        if(parallel(clipped_array[0], ts.p[2], ts.p[1], clipped_array[0]))
-        {
-            clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
-            clipped_array[clipped_cnt - 1] = ts.p[0];
-            clipped_cnt++;
-            clipped_array[clipped_cnt++] = tc.p[0];
-        }
-        else
-        {
-            for(int j = clipped_cnt - 1; j > 0; j--)
-            {
-                clipped_array[j + 1] = clipped_array[j];
-            }
-            clipped_array[1] = ts.p[0];
-            clipped_cnt++;
-            clipped_array[clipped_cnt++] = tc.p[0];
-        }
-    }
-    else//(1 == cnt_in_c && 1 == cnt_in_s
-     //   && !BIntersectIncludeBoundary(ts.p[1], ts.p[2], tc.p[1], tc.p[2]))
+            && test1 && test2)
     {
         AddIntersection(ts, tc, clipped_array, clipped_cnt);
         clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
         clipped_array[clipped_cnt - 1] = ts.p[0];
         clipped_cnt++;
         clipped_array[clipped_cnt++] = tc.p[0];
+    }
+    else if(1 == cnt_in_c && 1 == cnt_in_s
+            && test1 && !test2)
+    {
+        AddIntersection(ts, tc, clipped_array, clipped_cnt);
+        clipped_array[clipped_cnt++] = tc.p[0];
+        clipped_array[clipped_cnt++] = clipped_array[0];
+        clipped_array[0] = ts.p[0];
+    }
+    else if(1 == cnt_in_c && 1 == cnt_in_s && !test1)
+    {
+        AddIntersection(ts, tc, clipped_array, clipped_cnt);
+        clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
+        clipped_array[clipped_cnt - 1] = ts.p[0];
+        clipped_cnt++;
+        clipped_array[clipped_cnt++] = tc.p[0];
+    }
+    else
+    {
+        exit(3);
     }
 
 
