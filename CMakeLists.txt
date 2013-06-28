@@ -1,7 +1,7 @@
-cmake_minimum_required(VERSION 2.8.5 FATAL_ERROR)
-#find_package(CUDA)
-
+cmake_minimum_required(VERSION 2.8)
 PROJECT (IntersectVTK)
+
+find_package(CUDA)
 
 if(NOT VTK_BINARY_DIR)
   find_package(VTK COMPONENTS
@@ -12,9 +12,13 @@ if(NOT VTK_BINARY_DIR)
   include(${VTK_USE_FILE})
 endif()
 
+include_directories(
+		${CUDA_TOOLKIT_INCLUDE}
+	)
+	
 #cuda_compile(TRIANGLE_CLIP_CU TriangleClip.cu)
 #compile(INTERSECT_VTK_O IntersectVTK.cxx)
 
-#cuda_add_executable(IntersectVTK TriangleClip.cu IntersectVTK.cxx)
-add_executable(IntersectVTK IntersectVTK.cxx)
-target_link_libraries(IntersectVTK ${VTK_LIBRARIES})
+cuda_add_executable(${PROJECT_NAME} TriangleClip.cu IntersectVTK.cxx)
+#add_executable(IntersectVTK IntersectVTK.cxx)
+target_link_libraries(${PROJECT_NAME} ${VTK_LIBRARIES} ${CUDA_CUDART_LIBRARY})
