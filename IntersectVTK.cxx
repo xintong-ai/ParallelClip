@@ -24,6 +24,12 @@ static int nbinY = rangeY / STEP_Y;
 static int nbin = nbinX * nbinY;
 static int cnt = 0;
 
+extern "C"
+void loadDataToDevice(float* trgl_s, float* trgl_c, int ntrgl, int *pair, int npar);
+
+extern "C"
+void initCUDA();
+
 struct point
 {
     float x;
@@ -562,13 +568,15 @@ vector<vector<point> > clipSets(vector<triangle> t_s, vector<triangle> t_c, vect
 
     }
 
+    loadDataToDevice(&t_s[0].p[0].x, &t_c[0].p[0].x, t_s.size(), &polyPairs[0].is, polyPairs.size());
+
 
     for(int i = 0; i < polyPairs.size(); i++)
     {
         vector<point> clipped = clip(t_c[polyPairs[i].ic], t_s[polyPairs[i].is]);
         if(clipped.size()>0)
             clippedAll.push_back(clipped);
-        if((i % 1000) == 0)
+        if((i % 1000000) == 0)
             cout<<"i = "<<i<<endl;
     }
     return clippedAll;
@@ -613,6 +621,7 @@ void writePolygonFile(char* filename, vector<vector<point> > poly)
 
 int main( int argc, char *argv[] )
 {
+
     char filename_constraint[100] = "/home/xtong/data/VTK-LatLon2/CAM_1_vec.vtk";
     char filename_subject[100] = "/home/xtong/data/VTK-LatLon2/CAM_1_vec_warped_5times.vtk";
 
@@ -644,7 +653,7 @@ int main( int argc, char *argv[] )
     ImportTriangles(points_s, cell_s, trias_s);
 
     clock_t t2 = clock();
-
+    initCUDA();
 
     vector<vector<int> > cellsInBin = Binning(trias_c);
     vector<vector<point> > clippedPoly = clipSets(trias_s, trias_c, cellsInBin);
@@ -656,3 +665,4 @@ int main( int argc, char *argv[] )
     writePolygonFile("CAM_0_small_clipped.vtk", clippedPoly);
     return 1;
 }
+
