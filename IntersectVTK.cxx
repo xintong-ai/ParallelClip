@@ -342,6 +342,17 @@ inline bool parallel(pt p1, pt p2, pt q1, pt q2)
       return false;
 }
 
+struct instructSet
+{
+    bool doIns[14];
+    instructSet()
+    {
+        for(int i = 0; i < 14; i++)
+            doIns[i] = false;
+    }
+};
+static instructSet stateSet[11];
+
 vector<point> clip(triangle t_s, triangle t_c)
 {
     vector<point> clipped;
@@ -401,138 +412,65 @@ vector<point> clip(triangle t_s, triangle t_c)
 
     bool test;
     if(1 == cnt_in_c && 1 == cnt_in_s)
-    {
-      //  test1 = BIntersectIncludeBoundary(ts.p[1], ts.p[2], tc.p[1], tc.p[2]);
-        //if(test1)
         test = BIntersectIncludeBoundary(ts.p[1], ts.p[2], tc.p[0], tc.p[1]);
-    }
 
-    int state = 0;
+    int state = -1;
     if(0 == cnt_in_c && 0 == cnt_in_s)
-        state = 1;
+        state = 0;
     else if(0 == cnt_in_c && 1 == cnt_in_s)
-        state = 2;
+        state = 1;
     else if(1 == cnt_in_c && 0 == cnt_in_s)
-        state = 3;
+        state = 2;
     else if(0 == cnt_in_c && 2 == cnt_in_s)
-        state = 4;
+        state = 3;
     else if(2 == cnt_in_c && 0 == cnt_in_s)
-        state = 5;
+        state = 4;
     else if(0 == cnt_in_c && 3 == cnt_in_s)
-        state = 6;
+        state = 5;
     else if(3 == cnt_in_c && 0 == cnt_in_s)
-        state = 7;
+        state = 6;
     else if(1 == cnt_in_c && 2 == cnt_in_s)
-        state = 8;
+        state = 7;
     else if(2 == cnt_in_c && 1 == cnt_in_s)
-        state = 9;
+        state = 8;
     else if(1 == cnt_in_c && 1 == cnt_in_s && !test)
-        state = 10;
+        state = 9;
     else// if(1 == cnt_in_c && 1 == cnt_in_s && !test1) and (1 == cnt_in_c && 1 == cnt_in_s && test1 && test2)
-        state = 11;
+        state = 10;
+    //+cs
 
     pt clipped_array[6];
 
     int clipped_cnt = 0;
-    if(1 == state)
-    {
-        AddIntersection(ts, tc, clipped_array, clipped_cnt);
-    }
-    else if(2 == state)
-    {
+    instructSet is = stateSet[state];
+    if(is.doIns[0])//+sc
         AddIntersection(tc, ts, clipped_array, clipped_cnt);
-        //+s0
-        clipped_array[clipped_cnt++] = ts.p[0];
-    }
-    else if(3 == state)
-    {
+    if(is.doIns[1])//+cs
         AddIntersection(ts, tc, clipped_array, clipped_cnt);
-        //+c0
-        clipped_array[clipped_cnt++] = tc.p[0];
-    }
-    else if(4 == state)
-    {
-        AddIntersection(tc, ts, clipped_array, clipped_cnt);
-        //+s0
-        clipped_array[clipped_cnt++] = ts.p[0];
-        //+s1
-        clipped_array[clipped_cnt++] = ts.p[1];
-    }
-    else if(5 == state)
-    {
-        AddIntersection(ts, tc, clipped_array, clipped_cnt);
-        //+c0
-        clipped_array[clipped_cnt++] = tc.p[0];
-        //+c1
-        clipped_array[clipped_cnt++] = tc.p[1];
-    }
-    else if(6 == state)
-    {
-        //+s0
-        clipped_array[clipped_cnt++] = ts.p[0];
-        //+s1
-        clipped_array[clipped_cnt++] = ts.p[1];
-        //+s2
-        clipped_array[clipped_cnt++] = ts.p[2];
-    }
-    else if(7 == state)
-    {
-        //+c0
-        clipped_array[clipped_cnt++] = tc.p[0];
-        //+c1
-        clipped_array[clipped_cnt++] = tc.p[1];
-        //+c2
-        clipped_array[clipped_cnt++] = tc.p[2];
-    }
-    else if(8 == state)
-    {
-        AddIntersection(tc, ts, clipped_array, clipped_cnt);
-        //+c0-
+    if(is.doIns[12])
         clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
+    if(is.doIns[2])//+c0-
         clipped_array[clipped_cnt - 1] = tc.p[0];
+    if(is.doIns[3])//+s0-
+        clipped_array[clipped_cnt - 1] = ts.p[0];
+    if(is.doIns[13])
         clipped_cnt++;
-        //+s0
+    if(is.doIns[4])//+s0
         clipped_array[clipped_cnt++] = ts.p[0];
-        //+s1
+    if(is.doIns[5])//+c0
+        clipped_array[clipped_cnt++] = tc.p[0];
+    if(is.doIns[6])//+s1
         clipped_array[clipped_cnt++] = ts.p[1];
-    }
-    else if(9 == state)
-    {
-        AddIntersection(ts, tc, clipped_array, clipped_cnt);
-        //+s0-
-        clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
-        clipped_array[clipped_cnt - 1] = ts.p[0];
-        clipped_cnt++;
-        //+c0
-        clipped_array[clipped_cnt++] = tc.p[0];
-        //+c1
+    if(is.doIns[7])//+c1
         clipped_array[clipped_cnt++] = tc.p[1];
-    }
-    else if(10 == state)
-    {
-        AddIntersection(ts, tc, clipped_array, clipped_cnt);
-        //+c0
-        clipped_array[clipped_cnt++] = tc.p[0];
-        //+r0
+    if(is.doIns[8])//+s2
+        clipped_array[clipped_cnt++] = ts.p[2];
+    if(is.doIns[9])//+c2
+        clipped_array[clipped_cnt++] = tc.p[2];
+    if(is.doIns[10])//+r0
         clipped_array[clipped_cnt++] = clipped_array[0];
-        //+r0_s0
+    if(is.doIns[11])//+r0_s0
         clipped_array[0] = ts.p[0];
-    }
-    else if(11 == state)
-    {
-        AddIntersection(ts, tc, clipped_array, clipped_cnt);
-        //+s0-
-        clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
-        clipped_array[clipped_cnt - 1] = ts.p[0];
-        clipped_cnt++;
-        //+c0
-        clipped_array[clipped_cnt++] = tc.p[0];
-    }
-    else
-    {
-        exit(3);
-    }
-
 
     for(int i = 0; i < clipped_cnt; i++)
     {
@@ -543,17 +481,69 @@ vector<point> clip(triangle t_s, triangle t_c)
 }
 
 
+void setStateInstr()
+{
+    stateSet[0].doIns[1] = true;
+
+    stateSet[1].doIns[0] = true;
+    stateSet[1].doIns[4] = true;
+
+    stateSet[2].doIns[1] = true;
+    stateSet[2].doIns[5] = true;
+
+    stateSet[3].doIns[0] = true;
+    stateSet[3].doIns[4] = true;
+    stateSet[3].doIns[6] = true;
+
+    stateSet[4].doIns[1] = true;
+    stateSet[4].doIns[5] = true;
+    stateSet[4].doIns[7] = true;
+
+    stateSet[5].doIns[4] = true;
+    stateSet[5].doIns[6] = true;
+    stateSet[5].doIns[8] = true;
+
+    stateSet[6].doIns[5] = true;
+    stateSet[6].doIns[7] = true;
+    stateSet[6].doIns[9] = true;
+
+    stateSet[7].doIns[0] = true;
+    stateSet[7].doIns[12] = true;
+    stateSet[7].doIns[2] = true;
+    stateSet[7].doIns[13] = true;
+    stateSet[7].doIns[4] = true;
+    stateSet[7].doIns[6] = true;
+
+    stateSet[8].doIns[1] = true;
+    stateSet[8].doIns[12] = true;
+    stateSet[8].doIns[3] = true;
+    stateSet[8].doIns[13] = true;
+    stateSet[8].doIns[5] = true;
+    stateSet[8].doIns[7] = true;
+
+    stateSet[9].doIns[1] = true;
+    stateSet[9].doIns[5] = true;
+    stateSet[9].doIns[10] = true;
+    stateSet[9].doIns[11] = true;
+
+    stateSet[10].doIns[1] = true;
+    stateSet[10].doIns[3] = true;
+    stateSet[10].doIns[5] = true;
+}
+
 //clip two set of cellsNoSort
 vector<vector<point> > clipSets(vector<triangle> t_s, vector<triangle> t_c, vector<vector<int> > cellInBin_c)
 {
+
+    setStateInstr();
+
     vector<vector<point> > clippedAll;
     int ic;
-    //for each quad in subject set
+    //for each quad in subject set11
 
     vector<IndexPair> polyPairs;     //pair of polygons that need to be tested
     for(int is = 0; is < t_s.size(); is++)
     {
-     //   is = 7162;
         triangle s = t_s[is];// one quad in subject set
         vector<int> bin_s =  GetBinTriangle(s); //the bins the subject quad belong to
 
@@ -562,13 +552,11 @@ vector<vector<point> > clipSets(vector<triangle> t_s, vector<triangle> t_c, vect
         {
             int b_s = bin_s[ibs];//bin number
             vector<int> cellIdx_c = cellInBin_c[b_s];//indices of all the constaint quads in this bin
-        //    cout<<"number of cellIdx_c:"<<cellIdx_c.size()<<endl;
             for(int i = 0; i < cellIdx_c.size(); i++)
             {
                 ic = cellIdx_c[i];
                 IndexPair pr(is, ic);
                 polyPairs.push_back(pr);
-       //         ic = 6596;
             }
         }
 
