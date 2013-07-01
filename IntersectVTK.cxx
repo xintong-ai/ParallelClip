@@ -7,7 +7,11 @@
 #include "vtkCellArray.h"
 #include "time.h"
 #include <cmath>
+
+#define PARALLEL_ON 0
+
 #include "clip.h"
+
 using namespace std;
 
 
@@ -18,7 +22,7 @@ using namespace std;
 #define Y_MAX 90
 #define Y_MIN -90
 
-#define PARALLEL_ON 0
+
 
 static int rangeX = X_MAX - X_MIN;
 static int rangeY = Y_MAX - Y_MIN;
@@ -31,6 +35,8 @@ void loadDataToDevice(float* trgl_s, float* trgl_c, int ntrgl, int *pair, int np
 
 extern "C"
 void initCUDA();
+
+
 //
 //struct point
 //{
@@ -129,19 +135,19 @@ vector<int> GetBinTriangle(triangle q)
     vector<int> ret;
     int xmin, xmax, ymin, ymax;
     //value can be out of boundary, so mode the number of bins in each coordinate
-    xmin = min(
+    xmin = min3<float>(
             GetXBin(q.p[0].x),
             GetXBin(q.p[1].x),
             GetXBin(q.p[2].x));
-    xmax = max(
+    xmax = max3<float>(
             GetXBin(q.p[0].x),
             GetXBin(q.p[1].x),
             GetXBin(q.p[2].x));
-    ymin = min(
+    ymin = min3<float>(
             GetYBin(q.p[0].y),
             GetYBin(q.p[1].y),
             GetYBin(q.p[2].y));
-    ymax = max(
+    ymax = max3<float>(
             GetYBin(q.p[0].y),
             GetYBin(q.p[1].y),
             GetYBin(q.p[2].y));
@@ -250,6 +256,7 @@ void ImportTriangles(vtkPoints* vtkPts, vtkCellArray* vtkCls, vector<triangle> &
 //};
 //static instructSet stateSet[11];
 //
+#if !PARALLEL_ON
 vector<point> clip_serial(triangle t_s, triangle t_c)
 {
     vector<point> clipped;
@@ -379,6 +386,7 @@ vector<point> clip_serial(triangle t_s, triangle t_c)
     }
     return clipped;
 }
+#endif
 //
 //
 //void setStateInstr()
@@ -467,15 +475,19 @@ vector<vector<point> > clipSets(vector<triangle> t_s, vector<triangle> t_c, vect
     loadDataToDevice(&t_s[0].p[0].x, &t_c[0].p[0].x, t_s.size(), &polyPairs[0].is, polyPairs.size());
 #endif
 
-
+#if PARALLEL_ON
+	
+#else
     for(int i = 0; i < polyPairs.size(); i++)
     {
-        vector<point> clipped = clip_serial(t_c[polyPairs[i].ic], t_s[polyPairs[i].is]);
+		vector<point> clipped;
+        clipped = clip_serial(t_c[polyPairs[i].ic], t_s[polyPairs[i].is]);
         if(clipped.size()>0)
             clippedAll.push_back(clipped);
         if((i % 100000) == 0)
             cout<<"i = "<<i<<endl;
     }
+#endif
     return clippedAll;
 
 }
@@ -518,8 +530,8 @@ void writePolygonFile(char* filename, vector<vector<point> > poly)
 
 int main( int argc, char *argv[] )
 {
-	//char filename_constraint[100] = "data/CAM_0_small_vec.vtk";//CAM_1_vec.vtk";//"/home/xtong/data/VTK-LatLon2/CAM_1_vec.vtk";
- //   char filename_subject[100] = "data/CAM_0_small_vec_warped_5times.vtk";//CAM_1_vec_warped_5times.vtk";//"/home/xtong/data/VTK-LatLon2/CAM_1_vec_warped_5times.vtk";
+//	char filename_constraint[100] = "data/CAM_0_small_vec.vtk";//CAM_1_vec.vtk";//"/home/xtong/data/VTK-LatLon2/CAM_1_vec.vtk";
+//    char filename_subject[100] = "data/CAM_0_small_vec_warped_5times.vtk";//CAM_1_vec_warped_5times.vtk";//"/home/xtong/data/VTK-LatLon2/CAM_1_vec_warped_5times.vtk";
 
     char filename_constraint[100] = "data/CAM_1_vec.vtk";//"/home/xtong/data/VTK-LatLon2/CAM_1_vec.vtk";
     char filename_subject[100] = "data/CAM_1_vec_warped_5times.vtk";//"/home/xtong/data/VTK-LatLon2/CAM_1_vec_warped_5times.vtk";
