@@ -19,6 +19,6 @@ include_directories(
 #cuda_compile(TRIANGLE_CLIP_CU TriangleClip.cu)
 #compile(INTERSECT_VTK_O IntersectVTK.cxx)
 
-cuda_add_executable(${PROJECT_NAME} TriangleClip.cu IntersectVTK.cxx)
+cuda_add_executable(${PROJECT_NAME} TriangleClip.cu IntersectVTK.cxx clip.h)
 #add_executable(IntersectVTK IntersectVTK.cxx)
 target_link_libraries(${PROJECT_NAME} ${VTK_LIBRARIES} ${CUDA_CUDART_LIBRARY})
