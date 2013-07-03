@@ -1,6 +1,9 @@
 #ifndef CLIP_H
 #define CLIP_H
 
+#include <vector>
+using namespace std;
+
 #define NVCC_ON 1	//using nvcc instead of g++
 
 #define EPS 0.00001
@@ -12,10 +15,6 @@
 #include "device_launch_parameters.h"
 #endif
 
-struct instructSet
-{
-    bool doIns[14];
-};
 
 struct pt
 {
@@ -85,9 +84,10 @@ struct triangle
 };
 
 #if NVCC_ON
-__host__ __device__
+__host__
 #endif
 void setStateInstr();
+
 
 
 template<typename T>
@@ -131,56 +131,16 @@ inline T max3(T x1, T x2, T x3)
     return xmax;
 }
 
-#if NVCC_ON
-__host__ __device__
-#endif
-//touching boundary is also intersect
-inline bool BIntersectIncludeBoundary(pt p1, pt p2, pt q1, pt q2);
-
-#if NVCC_ON
-__host__ __device__
-#endif
-inline bool BIntersect(pt p1, pt p2, pt q1, pt q2);
-
-#if NVCC_ON
-__host__ __device__
-#endif
-inline point diffPt(pt p1, pt p2);
-
-#if NVCC_ON
-__host__ __device__
-#endif
-inline float dot(point p1, point p2);
-
-#if NVCC_ON
-__host__ __device__
-#endif
-inline bool testInside(pt p, trgl t);
-
-
-#if NVCC_ON
-__host__ __device__
-#endif
-inline void Intersect(pt p1, pt p2, pt q1, pt q2,
-        pt &pi, pt &qi);
-
-
-
-
-#if NVCC_ON
-__host__ __device__
-#endif
-inline void AddIntersection(trgl ts, trgl tc, pt *clipped_array, int &clipped_cnt);
-
-#if NVCC_ON
-__host__ __device__
-#endif
-inline void printTrgl(trgl t);
-
-extern "C"
-#if NVCC_ON
-__host__ __device__
-#endif
-inline void clip(trgl ts, trgl tc, 	pt clipped_array[6], int &clipped_cnt);
 
 #endif //CLIP_H
+__host__
+void runKernel(float* &points, int* &cells, int &nCells, int &nPts);
+
+__host__
+void loadDataToDevice(float* trgl_s, float* trgl_c, int ntrgl, int *pair, int npair);
+
+__host__
+void initCUDA();
+
+__host__
+vector<point> clip_serial(triangle t_s, triangle t_c);

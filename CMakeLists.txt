@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 2.8)
 PROJECT (IntersectVTK)
 
 find_package(CUDA)
+find_package(Thrust)
 
 if(NOT VTK_BINARY_DIR)
   find_package(VTK COMPONENTS
