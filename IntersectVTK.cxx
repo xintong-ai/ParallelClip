@@ -100,7 +100,7 @@ vector<int> GetBinTriangle(triangle q)
 vector<vector<int> > Binning(vector<triangle> q)
 {
     vector<vector<int> > CellsInBin(nbin, vector<int>(0));
-    for(int i = 0; i < q.size() / 512; i++)
+    for(int i = 0; i < q.size() / 2; i++)
     {
         vector<int> bins = GetBinTriangle(q[i]);
         for(int b = 0; b < bins.size(); b++)
@@ -171,80 +171,39 @@ void writePolygonFile(char* filename, vector<vector<point> > poly)
 
 void writePolygonFileFastArray(char* filename, float* points_array, vtkIdType* cells_array, int nCells, int nPts)
 {
+	cout<<"cells_array:"<<endl;
+	for(int i = 0; i < 30; i++)
+		cout<<cells_array[nCells + nPts - 1 - i]<<endl;
 	vtkIdTypeArray *cellIdx = vtkIdTypeArray::New();
-	//vector<vtkIdType> idx_array;
-	//vector<float> pts_vec;
-	//for(int i = 0; i < poly.size(); i++)
-	//{
-	//	int np = poly[i].size();
-	//	idx_array.push_back(np);
-	//	for(int p = 0; p < np; p++, nPts++)
-	//	{
-	//		idx_array.push_back(nPts);
-	//		pts_vec.push_back(poly[i][p].x);
-	//		pts_vec.push_back(poly[i][p].y);
-	//		pts_vec.push_back(0);
-	//	}
-	//}
-	cout<<"nPts:" << nPts<<endl;
-	cout<<"nCells:"<<nCells<<endl;
+	cout<<"**2"<<endl;
 
-	cellIdx->SetArray((vtkIdType*)cells_array, nCells + nPts, 1);
-
+	//cells
+	cellIdx->SetArray(cells_array, nCells + nPts, 1);
 	vtkCellArray *cells = vtkCellArray::New();
 	cells->SetCells(nCells, cellIdx);
+	cout<<"**3"<<endl;
 
-//	float* poly_ptr = &poly[0][0].x;
-//	float* pts_array = (float*)malloc(nPts * 3 * sizeof(float));
-	/*for(int i = 0; i < nPts; i++)
-	{
-		pts_array[i * 3] = poly_ptr[i * 2];
-		pts_array[i * 3 + 1] = poly_ptr[i * 2 + 1];
-		pts_array[i * 3 + 2] = 0;
-	}*/
-
+	//points
 	vtkFloatArray *vtk_pts_array = vtkFloatArray::New();
 	vtk_pts_array->SetNumberOfComponents(3);
 	vtk_pts_array->SetArray(points_array, nPts * 3,1 );
-	
 	vtkPoints *pts = vtkPoints::New();
 	pts->SetDataTypeToFloat();
 	pts->SetData(vtk_pts_array);
-	//pts->SetNumberOfPoints(nPts);
+	cout<<"**4"<<endl;
 
-//	cells->SetNumberOfCells(poly.size());
-    //pts.Allocate(poly.size());
-    //vector<point> points;
-    //for(int i = 0; points)
-    //for each polygon
-    //int count = 0;
-    //for(int p = 0; p < poly.size(); p++)
-    //{
-    //    vector<point> onePoly = poly[p];
-    //    //for each vertex
-    //    vtkSmartPointer<vtkIdList> idl = vtkSmartPointer<vtkIdList>::New();
-    //    for(int v = 0; v < onePoly.size(); v++)
-    //    {
-    //        point p = onePoly[v];
-    //        pts->InsertNextPoint(p.x,p.y,0.0);
-    //        idl->InsertNextId(count++);
-    //    }
-    //    grid->InsertNextCell((int)VTK_POLYGON, idl);
-    //}
+	//grid
     vtkSmartPointer<vtkUnstructuredGrid> grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
     grid->SetPoints(pts);
 	grid->SetCells((int)VTK_POLYGON, cells);
-
-    //grid.SetCells();
-
+	cout<<"**5"<<endl;
+	
+	//writer
     vtkNew<vtkUnstructuredGridWriter> writer;
-	writer->SetFileTypeToASCII();
     writer->SetFileName(filename);
     writer->SetInputData(grid);
-  //  writer->SetFileTypeToBinary();
-
+    writer->SetFileTypeToBinary();
     writer->Write();
-
 }
 
 void writePolygonFileFast(char* filename, vector<vector<point> > poly)
@@ -265,58 +224,60 @@ void writePolygonFileFast(char* filename, vector<vector<point> > poly)
 			pts_vec.push_back(0);
 		}
 	}
-	cellIdx->SetArray(&idx_array[0], idx_array.size(), 1);
-	vtkCellArray *cells = vtkCellArray::New();
-	cells->SetCells(poly.size(), cellIdx);
 
-//	float* poly_ptr = &poly[0][0].x;
-//	float* pts_array = (float*)malloc(nPts * 3 * sizeof(float));
-	/*for(int i = 0; i < nPts; i++)
-	{
-		pts_array[i * 3] = poly_ptr[i * 2];
-		pts_array[i * 3 + 1] = poly_ptr[i * 2 + 1];
-		pts_array[i * 3 + 2] = 0;
-	}*/
-
-	vtkFloatArray *vtk_pts_array = vtkFloatArray::New();
-	vtk_pts_array->SetNumberOfComponents(3);
-	vtk_pts_array->SetArray(&pts_vec[0], pts_vec.size(),1 );
-	
-	vtkPoints *pts = vtkPoints::New();
-	pts->SetDataTypeToFloat();
-	pts->SetData(vtk_pts_array);
-	//pts->SetNumberOfPoints(nPts);
-
-//	cells->SetNumberOfCells(poly.size());
-    //pts.Allocate(poly.size());
-    //vector<point> points;
-    //for(int i = 0; points)
-    //for each polygon
-    //int count = 0;
-    //for(int p = 0; p < poly.size(); p++)
-    //{
-    //    vector<point> onePoly = poly[p];
-    //    //for each vertex
-    //    vtkSmartPointer<vtkIdList> idl = vtkSmartPointer<vtkIdList>::New();
-    //    for(int v = 0; v < onePoly.size(); v++)
-    //    {
-    //        point p = onePoly[v];
-    //        pts->InsertNextPoint(p.x,p.y,0.0);
-    //        idl->InsertNextId(count++);
-    //    }
-    //    grid->InsertNextCell((int)VTK_POLYGON, idl);
-    //}
-    vtkSmartPointer<vtkUnstructuredGrid> grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
-    grid->SetPoints(pts);
-	grid->SetCells((int)VTK_POLYGON, cells);
-
-    //grid.SetCells();
-
-    vtkNew<vtkUnstructuredGridWriter> writer;
-    writer->SetFileName(filename);
-    writer->SetInputData(grid);
-    writer->SetFileTypeToBinary();
-    writer->Write();
+	writePolygonFileFastArray(filename, &pts_vec[0], &idx_array[0], poly.size(), nPts);
+//	cellIdx->SetArray(&idx_array[0], idx_array.size(), 1);
+//	vtkCellArray *cells = vtkCellArray::New();
+//	cells->SetCells(poly.size(), cellIdx);
+//
+////	float* poly_ptr = &poly[0][0].x;
+////	float* pts_array = (float*)malloc(nPts * 3 * sizeof(float));
+//	/*for(int i = 0; i < nPts; i++)
+//	{
+//		pts_array[i * 3] = poly_ptr[i * 2];
+//		pts_array[i * 3 + 1] = poly_ptr[i * 2 + 1];
+//		pts_array[i * 3 + 2] = 0;
+//	}*/
+//
+//	vtkFloatArray *vtk_pts_array = vtkFloatArray::New();
+//	vtk_pts_array->SetNumberOfComponents(3);
+//	vtk_pts_array->SetArray(&pts_vec[0], pts_vec.size(),1 );
+//	
+//	vtkPoints *pts = vtkPoints::New();
+//	pts->SetDataTypeToFloat();
+//	pts->SetData(vtk_pts_array);
+//	//pts->SetNumberOfPoints(nPts);
+//
+////	cells->SetNumberOfCells(poly.size());
+//    //pts.Allocate(poly.size());
+//    //vector<point> points;
+//    //for(int i = 0; points)
+//    //for each polygon
+//    //int count = 0;
+//    //for(int p = 0; p < poly.size(); p++)
+//    //{
+//    //    vector<point> onePoly = poly[p];
+//    //    //for each vertex
+//    //    vtkSmartPointer<vtkIdList> idl = vtkSmartPointer<vtkIdList>::New();
+//    //    for(int v = 0; v < onePoly.size(); v++)
+//    //    {
+//    //        point p = onePoly[v];
+//    //        pts->InsertNextPoint(p.x,p.y,0.0);
+//    //        idl->InsertNextId(count++);
+//    //    }
+//    //    grid->InsertNextCell((int)VTK_POLYGON, idl);
+//    //}
+//    vtkSmartPointer<vtkUnstructuredGrid> grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
+//    grid->SetPoints(pts);
+//	grid->SetCells((int)VTK_POLYGON, cells);
+//
+//    //grid.SetCells();
+//
+//    vtkNew<vtkUnstructuredGridWriter> writer;
+//    writer->SetFileName(filename);
+//    writer->SetInputData(grid);
+//    writer->SetFileTypeToBinary();
+//    writer->Write();
 
 }
 
@@ -374,8 +335,8 @@ void clipSets(vector<triangle> t_s, vector<triangle> t_c, vector<vector<int> > c
 		if(is % 100 == 0)	
 			cout<<"is = "<< is << endl;
     }
-	clock_t t1 = clock();
 
+	clock_t t1 = clock();
     
 #if PARALLEL_ON
     loadDataToDevice(&t_s[0].p[0].x, &t_c[0].p[0].x, t_s.size(), &polyPairs[0].is, polyPairs.size());
@@ -386,11 +347,9 @@ void clipSets(vector<triangle> t_s, vector<triangle> t_c, vector<vector<int> > c
 	vtkIdType* cells;
 	int nCells;
 	int nPts;
+	cout<<"**0"<<endl;
 	runKernel(points, cells, nCells, nPts);
-//	finishCUDA();
-	cout<<"start writing:"<<endl;
-	for(int i = 0; i < 5; i++)
-		cout<<(int)(cells[i])<<endl;
+	clock_t t2 = clock();
 	writePolygonFileFastArray("data/CAM_0_small_clipped_parallel.vtk", points, cells, nCells, nPts);
 #else
     for(int i = 0; i < polyPairs.size(); i++)
@@ -402,9 +361,9 @@ void clipSets(vector<triangle> t_s, vector<triangle> t_c, vector<vector<int> > c
         if((i % 100000) == 0)
             cout<<"i = "<<i<<endl;
     }
+	clock_t t2 = clock();
 	writePolygonFileFast("data/CAM_0_small_clipped.vtk", clippedAll);
 #endif
-	clock_t t2 = clock();
     unsigned long compute_time = (t2 - t1) * 1000 / CLOCKS_PER_SEC;
 	cout<<"Clipping time:"<< (float)compute_time * 0.001 << "sec" << endl;
   //  return clippedAll;
@@ -463,4 +422,3 @@ int main( int argc, char *argv[] )
  //   writePolygonFile("data/CAM_0_small_clipped.vtk", clippedPoly);
     return 1;
 }
-
