@@ -169,7 +169,7 @@ void writePolygonFile(char* filename, vector<vector<point> > poly)
 
 }
 
-void writePolygonFileFastArray(char* filename, float* points_array, int* cells_array, int nCells, int nPts)
+void writePolygonFileFastArray(char* filename, float* points_array, vtkIdType* cells_array, int nCells, int nPts)
 {
 	vtkIdTypeArray *cellIdx = vtkIdTypeArray::New();
 	//vector<vtkIdType> idx_array;
@@ -186,6 +186,9 @@ void writePolygonFileFastArray(char* filename, float* points_array, int* cells_a
 	//		pts_vec.push_back(0);
 	//	}
 	//}
+	cout<<"nPts:" << nPts<<endl;
+	cout<<"nCells:"<<nCells<<endl;
+
 	cellIdx->SetArray((vtkIdType*)cells_array, nCells + nPts, 1);
 
 	vtkCellArray *cells = vtkCellArray::New();
@@ -380,26 +383,30 @@ void clipSets(vector<triangle> t_s, vector<triangle> t_c, vector<vector<int> > c
 
 #if PARALLEL_ON
 	float* points;
-	int* cells;
+	vtkIdType* cells;
 	int nCells;
 	int nPts;
 	runKernel(points, cells, nCells, nPts);
+//	finishCUDA();
+	cout<<"start writing:"<<endl;
+	for(int i = 0; i < 5; i++)
+		cout<<(int)(cells[i])<<endl;
 	writePolygonFileFastArray("data/CAM_0_small_clipped_parallel.vtk", points, cells, nCells, nPts);
 #else
     for(int i = 0; i < polyPairs.size(); i++)
     {
 		vector<point> clipped;
-        clipped = clip_serial(t_c[polyPairs[i].ic], t_s[polyPairs[i].is]);
+        clipped = clip_serial(t_s[polyPairs[i].is], t_c[polyPairs[i].ic]);
         if(clipped.size()>0)
             clippedAll.push_back(clipped);
         if((i % 100000) == 0)
             cout<<"i = "<<i<<endl;
     }
+	writePolygonFileFast("data/CAM_0_small_clipped.vtk", clippedAll);
 #endif
 	clock_t t2 = clock();
     unsigned long compute_time = (t2 - t1) * 1000 / CLOCKS_PER_SEC;
 	cout<<"Clipping time:"<< (float)compute_time * 0.001 << "sec" << endl;
-	writePolygonFileFast("data/CAM_0_small_clipped.vtk", clippedAll);
   //  return clippedAll;
 }
 

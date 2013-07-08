@@ -19,6 +19,7 @@ include_directories(
 	
 #cuda_compile(TRIANGLE_CLIP_CU TriangleClip.cu)
 #compile(INTERSECT_VTK_O IntersectVTK.cxx)
+#set(CUDA_NVCC_FLAGS "-DTHRUST_DEBUG")
 
 cuda_add_executable(${PROJECT_NAME} TriangleClip.cu IntersectVTK.cxx clip.h)
 #add_executable(IntersectVTK IntersectVTK.cxx)

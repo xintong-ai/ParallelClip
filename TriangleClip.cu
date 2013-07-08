@@ -10,9 +10,13 @@
 #define EPS 0.00001
 #define N_STATE 11
 #define N_INSTR 14
+
+
+
+
 struct polygon
 {
-	point p[6];
+	float2 p[6];
 };
 
 struct instructSet
@@ -35,8 +39,8 @@ inline void CheckError(cudaError_t error)
 float *d_trgl_s;
 float *d_trgl_c;
 int2 *d_pair;
-float *d_clipped_vert;
-float *d_clipped_vert_3d;
+polygon *d_clipped_vert;
+//float *d_clipped_vert_3d;
 int *d_clipped_n_vert;
 int _npair;
 instructSet *d_state;
@@ -137,6 +141,8 @@ inline bool BIntersectIncludeBoundary(pt p1, pt p2, pt q1, pt q2)
 
   return 1;
 }
+
+
 
 #if NVCC_ON
 __host__ __device__
@@ -276,6 +282,17 @@ inline void AddIntersection(trgl ts, trgl tc, pt *clipped_array, int &clipped_cn
     }
 }
 
+//have to use __host__ __device__ here, could not recognize template???
+#if NVCC_ON
+__host__ __device__
+#endif
+inline void myswap(pt &a, pt &b)
+{
+	pt tmp = a;
+	a = b;
+	b = tmp;
+}
+
 #if NVCC_ON
 __host__ __device__
 #endif
@@ -322,9 +339,9 @@ void clip(trgl ts, trgl tc, pt clipped_array[6], int &clipped_cnt, instructSet *
 	{
 		int idx = a[i];
 		if(!tc.p[idx].loc && tc.p[idx + 1].loc)
-			std::swap(tc.p[idx], tc.p[idx + 1]);
+			myswap(tc.p[idx], tc.p[idx + 1]);
 		if(!ts.p[idx].loc && ts.p[idx + 1].loc)
-			std::swap(ts.p[idx], ts.p[idx + 1]);
+			myswap(ts.p[idx], ts.p[idx + 1]);
 	}
 
 	bool test;
@@ -455,6 +472,16 @@ vector<point> clip_serial(triangle t_s, triangle t_c)
     return clipped;
 }
 
+__host__ void finishCUDA()
+{
+	cudaFree(d_clipped_n_vert);
+	cudaFree(d_clipped_vert);
+	cudaFree(d_trgl_s);
+	cudaFree(d_trgl_c);
+	cudaFree(d_pair);
+	cudaFree(d_state);
+}
+
 __host__ void initCUDA()
 {
 	int devID = 0;
@@ -516,7 +543,7 @@ __host__ void loadDataToDevice(float* trgl_s, float* trgl_c, int ntrgl, int *pai
     CheckError(error);
 
     //6 point * 2 value(x and y)
-    mem_size_clipped_vert = npair * 12 * sizeof(float);
+    mem_size_clipped_vert = npair * sizeof(polygon);
 
     error = cudaMalloc((void **) &d_clipped_vert, mem_size_clipped_vert);
 	CheckError(error);
@@ -537,33 +564,39 @@ __host__ void loadDataToDevice(float* trgl_s, float* trgl_c, int ntrgl, int *pai
 
 }
 
-__global__ void padding_kernel(float3* clipped_vert_3d, float2* clipped_vert, int N)
+//__global__ void padding_kernel(float3* clipped_vert_3d, float2* clipped_vert, int N)
+//{
+//	int idx = blockIdx.x * blockDim.x + threadIdx.x;
+//
+//	if (idx >= N)
+//		return;
+//
+//	clipped_vert_3d->x = clipped_vert->x;
+//	clipped_vert_3d->y = clipped_vert->y;
+//	clipped_vert_3d->z = 0;
+//}
+
+__global__ void gen_cells_kernel(vtkIdType* cellArray, int N, int* preSum, int* nVert)
 {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (idx >= N)
 		return;
-
-	clipped_vert_3d->x = clipped_vert->x;
-	clipped_vert_3d->y = clipped_vert->y;
-	clipped_vert_3d->z = 0;
-}
-
-__global__ void gen_cells_kernel(int* cellArray, int* preSum, int* nVert, int N)
-{
-	int idx = blockIdx.x * blockDim.x + threadIdx.x;
-
-	if (idx >= N)
-		return;
+//	cellArray[idx] = 2;
+	//return;
+	//cellArray[idx] = (long long)threadIdx.x;
+	//return;
+	
 	int begin = idx + preSum[idx];
 	int num = nVert[idx];
 	int input = preSum[idx];
 	cellArray[begin++] = num;
 	for(int i = 0; i < num; i++)
 		cellArray[begin++] = input++;
+/*		*/
 }
 
-__global__ void gen_points_kernel(float3 *points, float2 *clipped_vert, int *preSum, int *nVert, int N)
+__global__ void gen_points_kernel(float3 *points, polygon *clipped_vert, int *preSum, int *nVert, int N)
 {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -572,18 +605,26 @@ __global__ void gen_points_kernel(float3 *points, float2 *clipped_vert, int *pre
 
 	int num = nVert[idx];
 	int begin = preSum[idx];
-	int tmp;
+	//int tmp;
 	for(int i = 0; i < num; i++, begin++)
 	{
-		tmp = 6 * idx + i;
-		points[begin].x = clipped_vert[tmp].x;
-		points[begin].y = clipped_vert[tmp].y;
+		//tmp = 6 * idx + i;
+		points[begin].x = clipped_vert[idx].p[i].x;
+		points[begin].y = clipped_vert[idx].p[i].y;
 		points[begin].z = 0;
 	}
 }
 
+__global__ void abc(vtkIdType* cellArray, int N)
+{
+	int idx = blockIdx.x * blockDim.x + threadIdx.x;
+	if (idx >= N)
+		return;
+	cellArray[idx] = 2;
+}
+
 __host__
-void runKernel(float* &points, int* &cells, int &nCells, int &nPts)//triangle *t_s, triangle *t_c, int2 *pair, int npair)//, polygon *clipped, int *clipped_n)
+void runKernel(float* &points, vtkIdType* &cells, int &nCells, int &nPts)//triangle *t_s, triangle *t_c, int2 *pair, int npair)//, polygon *clipped, int *clipped_n)
 {
 	dim3 block(128, 1, 1);
     dim3 grid(ceil((float)_npair / block.x), 1, 1);
@@ -591,90 +632,165 @@ void runKernel(float* &points, int* &cells, int &nCells, int &nPts)//triangle *t
 	clip_kernel<<<grid, block>>>
 		((triangle*)d_trgl_s, (triangle*)d_trgl_c, 
 		(int2*)d_pair, _npair, 
-		(polygon*)d_clipped_vert, d_clipped_n_vert,
+		d_clipped_vert, d_clipped_n_vert,
 		d_state);
 
-	cudaError_t error;
-/*	error = cudaMalloc((void **) &d_clipped_vert_3d, mem_size_clipped_vert * 3 / 2);
-	CheckError(error);
 
-	padding_kernel<<<grid, block>>>
-		(d_clipped_vert_3d, d_clipped_vert, );
-		*/
+
+	cudaError_t error;
+
 	int* d_preSum;
     error = cudaMalloc((void **) &d_preSum, mem_size_clipped_n_vert);
     CheckError(error);
-	//thrust::device_vector<int> d_vec_clipped_n_vert(d_clipped_n_vert, d_clipped_n_vert + _npair);
-//	thrust::device_ptr<int> d_ptr_clipped_preSum = thrust::device_malloc<int>(_npair);
 
 	thrust::device_ptr<int> d_ptr_clipped_n_vert(d_clipped_n_vert);
-//	thrust::device_vector<int> d_ptr_clipped_n_vert();
 
 	thrust::device_ptr<int> d_ptr_clipped_preSum(d_preSum);
-//	d_ptr_clipped_n_vert
-	thrust::exclusive_scan(thrust::device, d_ptr_clipped_n_vert, d_ptr_clipped_n_vert + _npair, d_ptr_clipped_preSum);
+
+	thrust::device_ptr<polygon> d_ptr_clipped_vert(d_clipped_vert);
+	thrust::host_vector<polygon> h_vec_clipped_vert(d_ptr_clipped_vert, d_ptr_clipped_vert + _npair);
+//	thrust::device_ptr<int> d_ptr_clipped_n_vert(d_clipped_n_vert);
+	for(int i = 0; i < 10; i++)
+	{
+		cout<<"n_vert"<<d_ptr_clipped_n_vert[_npair - 1 - i]<<endl;
+		for(int j = 0; j < 6; j++)
+			cout<<h_vec_clipped_vert[_npair - 1 - i].p[j].x<< ","
+				<<h_vec_clipped_vert[_npair - 1 - i].p[j].y<<endl;
+
+			//cout<<h_vec_clipped_vert[i].p[j].x<< ","
+			//	<<h_vec_clipped_vert[i].p[j].y<<endl;
+	}
+
+	try {
+		thrust::exclusive_scan(thrust::device, d_ptr_clipped_n_vert, d_ptr_clipped_n_vert + _npair, d_ptr_clipped_preSum); }
+	catch(thrust::system_error &e) 
+	{ 
+	  std::cerr << "caught exception: " << e.what() << std::endl; 
+	  exit(-1);	
+	}
+
+
+	nPts = d_ptr_clipped_n_vert[_npair - 1] + d_ptr_clipped_preSum[_npair - 1];
+	cout<<nPts<<endl;
+
 	
-
-	int last = d_ptr_clipped_preSum[_npair - 1];
-	//cout<<last<<endl;
-
-	nPts = d_ptr_clipped_n_vert[_npair - 1] + last;
-
 	///////////points
 	float3* d_points;
 	unsigned int mem_size_points = nPts * sizeof(float3);
 	error = cudaMalloc((void **) &d_points, mem_size_points);
-	gen_points_kernel<<<grid, block>>>(d_points, (float2*)d_clipped_vert, d_preSum, d_clipped_n_vert, _npair);
+	gen_points_kernel<<<grid, block>>>(d_points, d_clipped_vert, d_preSum, d_clipped_n_vert, _npair);
+
+	thrust::device_ptr<float3> d_ptr_points(d_points);
+	thrust::host_vector<float3> h_vec(d_ptr_points, d_ptr_points + nPts);
+	cout<<"..."<<endl;
+	for(int i = 0; i < 21; i++)
+	{
+		cout<<h_vec[nPts - 1 - i].x<< ","
+			<<h_vec[nPts - 1 - i].y<< ","
+			<<h_vec[nPts - 1 - i].z<<endl;
+		//cout<<h_vec[i].x<< ","
+		//	<<h_vec[i].y<< ","
+		//	<<h_vec[i].z<<endl;
+	}
+
+
+	
 	float3* h_points = (float3*)malloc(mem_size_points);
 	error = cudaMemcpy(h_points, d_points, mem_size_points, cudaMemcpyDeviceToHost);
 
-	//	thrust::device_ptr<int> d_ptr_cells(d_cells);
-	//for(int i = 0; i < 20; i++)
-	//	std::cout << "D[" << i << "] = " << h_points[i].x <<","<< h_points[i].y <<","<< h_points[i].z << std::endl;
-	//////////cell
-	/*for(int i = 0; i < 30; i++)
-		cout<<d_ptr_clipped_n_vert[_npair -1 - i]<<endl;*/
+	//////cells//////
 	thrust::device_ptr<int> d_ptr_clipped_n_vert_end = thrust::remove(thrust::device, d_ptr_clipped_n_vert, d_ptr_clipped_n_vert + _npair, 0);
 	nCells = d_ptr_clipped_n_vert_end - d_ptr_clipped_n_vert;
 	cout<<"_npair:"<<_npair<<endl;
 	cout<<"nCells:" << nCells<<endl;
-	/*for(int i = 0; i < 10; i++)
-		cout<<d_ptr_clipped_n_vert[nCells -1 - i]<<endl;*/
 
 	int* d_preSum_compact;
 	unsigned int mem_size_preSum_compact = nCells * sizeof(int);
-	error = cudaMalloc((void **) &d_points, mem_size_preSum_compact);
+//	error = cudaMalloc((void **) &d_points, mem_size_preSum_compact);
     CheckError(error);
 	thrust::device_ptr<int> d_ptr_clipped_preSum_compact(d_preSum_compact);
-//	d_ptr_clipped_n_vert
 	thrust::exclusive_scan(thrust::device, d_ptr_clipped_n_vert, d_ptr_clipped_n_vert + nCells, d_ptr_clipped_preSum_compact);
 
-	//thrust::device_ptr<int> aa(d_clipped_n_vert);
-	//for(int i = 0; i < 20; i++)
-	//	cout<< aa[i]<<endl;
+	int size_cells = nPts + nCells;
 
-	unsigned int mem_size_cells = (nPts + nCells) * sizeof(int);
+	unsigned int mem_size_cells = size_cells * sizeof(vtkIdType);
 
-	int* d_cells;
-    error = cudaMalloc((void **) &d_cells, mem_size_cells);
-    CheckError(error);
+	cout<<"sizeof mem_size_cells:"<<mem_size_cells<<endl;
+
+	if (error != cudaSuccess)
+	{
+		printf("returned error code %d, line(%d)\n", error, __LINE__);
+		exit(EXIT_FAILURE);
+	}
+	cudaFree(d_clipped_vert);
+	cudaFree(d_trgl_s);
+	cudaFree(d_trgl_c);
+	cudaFree(d_pair);
+	cudaFree(d_state);
 	
-	gen_cells_kernel<<<grid, block>>>(d_cells, d_preSum_compact, d_clipped_n_vert, nCells);
+	long long* d_cells;
+    error = cudaMalloc((void **) &d_cells, mem_size_cells);
+	cudaDeviceSynchronize();
+	printf("Cuda status: %s\n", cudaGetErrorString( cudaGetLastError() ) ) ;
 
-	int* h_cells = (int*)malloc(mem_size_cells);
+	if (error != cudaSuccess)
+	{
+		printf("returned error code %d, line(%d)\n", error, __LINE__);
+		exit(EXIT_FAILURE);
+	}
+    CheckError(error);
+	cout<<"d_ptr_clipped_preSum_compact:"<<endl;
+	
+	dim3 block2(128, 1, 1);
+    dim3 grid2(ceil((float)size_cells / block2.x), 1, 1);
+	
+	thrust::device_ptr<int> aa(d_clipped_n_vert);
+	for(int i = 0; i < 10; i++)
+		cout<< aa[i]<<endl;
+	vtkIdType bb = 97;
+	cout<<"bb:"<<bb<<endl;
+
+	cout<<"grid2:"<<grid2.x<<","<<grid2.y<<","<<grid2.z<<endl;
+	gen_cells_kernel<<<grid2, block2>>>(d_cells, nCells, d_preSum_compact, d_clipped_n_vert);
+	//abc<<<grid2, block2>>>(d_cells, size_cells);
+
+	vtkIdType* h_cells = (vtkIdType*)malloc(mem_size_cells);
 	error = cudaMemcpy(h_cells, d_cells, mem_size_cells, cudaMemcpyDeviceToHost);
-	//for(int i = 0; i < 20; i++)
-	//	cout<< h_cells[i]<<endl;
+	cudaFree(d_cells);
+	cout<<"finished ..."<<endl;
+
+
+	cout<<"h_cells:"<<endl;
+	for(int i = 0; i < 20; i++)
+		cout<< h_cells[i]<<endl;
+
+	
+	cudaFree(d_clipped_n_vert);
+	
+	//finishCUDA();
+	cudaFree(d_preSum);
+	cudaFree(d_points);
+	//exit(1);
+	cout<<"released..."<<endl;
+
+
+	cout<<"allocated..."<<endl;
+	thrust::device_ptr<vtkIdType> d_ptr_cells(d_cells);
+	cout<<"pointed..."<<endl;
+	//thrust::host_vector<vtkIdType> h_vec_cells(d_ptr_cells, d_ptr_cells + nCells);
+	//for(int i = 0; i < 10; i++)
+	//	cout<< (int) d_ptr_cells[i]<<endl;
+	//cout<<"printed..."<<endl;
 
 
 
 	points = (float*)h_points;
-	cells = (int*) h_cells;
+	cells = h_cells;
 	//thrust::device_ptr<point> pts = thrust::device_malloc<point>(nPts);
 
 	//GetResultToHost();
 
 
 	//thrust::device_vector<int> d_vec_clipped_n_vert(d_ptr_clipped_n_vert, d_ptr_clipped_n_vert + _npair);
-
+	
 }
