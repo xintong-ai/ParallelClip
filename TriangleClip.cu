@@ -1,4 +1,5 @@
 #include <cuda_runtime.h>
+#include <cuda.h>
 #include "device_launch_parameters.h"
 #include "stdlib.h"
 #include "stdio.h"
@@ -10,6 +11,49 @@
 #define EPS 0.00001
 #define N_STATE 11
 #define N_INSTR 14
+#define CUDA_ERROR_CHECK
+
+#define CudaSafeCall( err ) __cudaSafeCall( err, __FILE__, __LINE__ )
+#define CudaCheckError()    __cudaCheckError( __FILE__, __LINE__ )
+ 
+inline void __cudaSafeCall( cudaError err, const char *file, const int line )
+{
+#ifdef CUDA_ERROR_CHECK
+    if ( cudaSuccess != err )
+    {
+        fprintf( stderr, "cudaSafeCall() failed at %s:%i : %s\n",
+                 file, line, cudaGetErrorString( err ) );
+        exit( -1 );
+    }
+#endif
+ 
+    return;
+}
+ 
+inline void __cudaCheckError( const char *file, const int line )
+{
+#ifdef CUDA_ERROR_CHECK
+    cudaError err = cudaGetLastError();
+    if ( cudaSuccess != err )
+    {
+        fprintf( stderr, "cudaCheckError() failed at %s:%i : %s\n",
+                 file, line, cudaGetErrorString( err ) );
+        exit( -1 );
+    }
+ 
+    // More careful checking. However, this will affect performance.
+    // Comment away if needed.
+    err = cudaDeviceSynchronize();
+    if( cudaSuccess != err )
+    {
+        fprintf( stderr, "cudaCheckError() with sync failed at %s:%i : %s\n",
+                 file, line, cudaGetErrorString( err ) );
+        exit( -1 );
+    }
+#endif
+ 
+    return;
+}
 
 struct polygon
 {
@@ -304,11 +348,11 @@ __host__ void GetResultToHost()
 	
 	float *h_clipped_vert = (float*)malloc(mem_size_clipped_vert);
 	error = cudaMemcpy(h_clipped_vert, d_clipped_vert, mem_size_clipped_vert, cudaMemcpyDeviceToHost);
-	CheckError(error);
+	CudaSafeCall(error);
 
 	int *h_clipped_n_vert = (int*)malloc(mem_size_clipped_n_vert);
 	error = cudaMemcpy(h_clipped_n_vert, d_clipped_n_vert, mem_size_clipped_n_vert, cudaMemcpyDeviceToHost);
-	CheckError(error);
+	CudaSafeCall(error);
 }
 
 
@@ -510,41 +554,41 @@ __host__ void loadDataToDevice(float* trgl_s, float* trgl_c, int ntrgl, int *pai
     unsigned int mem_size = ntrgl * 6 * sizeof(float);//3 vertices, each vertex has x and y(2 float)
 
     error = cudaMalloc((void **) &d_trgl_s, mem_size);
-    CheckError(error);
+    CudaSafeCall(error);
 
     error = cudaMalloc((void **) &d_trgl_c, mem_size);
-    CheckError(error);
+    CudaSafeCall(error);
 
     error = cudaMemcpy(d_trgl_s, trgl_s, mem_size, cudaMemcpyHostToDevice);
-    CheckError(error);
+    CudaSafeCall(error);
 
     error = cudaMemcpy(d_trgl_c, trgl_c, mem_size, cudaMemcpyHostToDevice);
-    CheckError(error);
+    CudaSafeCall(error);
 
     unsigned int mem_size_pair = npair * 2 * sizeof(int);
 
     error = cudaMalloc((void **) &d_pair, mem_size_pair);
-    CheckError(error);
+    CudaSafeCall(error);
 
     error = cudaMemcpy(d_pair, pair, mem_size_pair, cudaMemcpyHostToDevice);
-    CheckError(error);
+    CudaSafeCall(error);
 
     //6 point * 2 value(x and y)
     mem_size_clipped_vert = npair * sizeof(polygon);
 
     error = cudaMalloc((void **) &d_clipped_vert, mem_size_clipped_vert);
-	CheckError(error);
+	CudaSafeCall(error);
 
 	mem_size_clipped_n_vert = npair * sizeof(int);
 	error = cudaMalloc((void **) &d_clipped_n_vert, mem_size_clipped_n_vert);
-	CheckError(error);
+	CudaSafeCall(error);
 
 	//!!!!!!!!!!!!!!!!!!!!
 	//assign space for stateSet and copy to device memory
 	unsigned int mem_size_state = N_INSTR * N_STATE * sizeof(bool);
 	error = cudaMalloc((void **) &d_state, mem_size_state);
 	error = cudaMemcpy(d_state, _stateSet, mem_size_state, cudaMemcpyHostToDevice);
-    CheckError(error);
+    CudaSafeCall(error);
 
 
 	_npair = npair;
@@ -584,10 +628,28 @@ __global__ void gen_points_kernel(float3 *points, polygon *clipped_vert, int *pr
 	}
 }
 
-__host__
-void runKernel(float* &points, vtkIdType* &cells, int &nCells, int &nPts)//triangle *t_s, triangle *t_c, int2 *pair, int npair)//, polygon *clipped, int *clipped_n)
+template <typename T>
+__host__ void printArray(T *d_array, int size, int num, bool front)
 {
-	dim3 block(128, 1, 1);
+	unsigned int mem_size = size * sizeof(T);
+	T *h_array;
+	h_array = (T*)malloc(mem_size);
+	cudaError_t error = cudaMemcpy(h_array, d_array, mem_size, cudaMemcpyDeviceToHost);
+    CudaSafeCall(error);
+	cout<< "print array:"<<endl;
+	for(int i = 0; i < num; i++)
+	{
+		if(front)
+			cout<<h_array[i]<<endl;
+		else
+			cout<<h_array[size - 1 - i]<<endl;
+	}
+}
+
+__host__
+void runKernel(float* &points, vtkIdType* &cells, int &nCells, int &nPts, int nBlock)//triangle *t_s, triangle *t_c, int2 *pair, int npair)//, polygon *clipped, int *clipped_n)
+{
+	dim3 block(nBlock, 1, 1);
     dim3 grid(ceil((float)_npair / block.x), 1, 1);
 	
 	clip_kernel<<<grid, block>>>
@@ -600,7 +662,7 @@ void runKernel(float* &points, vtkIdType* &cells, int &nCells, int &nPts)//trian
 
 	int* d_preSum;
     error = cudaMalloc((void **) &d_preSum, mem_size_clipped_n_vert);
-    CheckError(error);
+    CudaSafeCall(error);
 
 	//previous sum for the number of vertices
 	thrust::device_ptr<int> d_ptr_clipped_n_vert(d_clipped_n_vert);
@@ -608,6 +670,7 @@ void runKernel(float* &points, vtkIdType* &cells, int &nCells, int &nPts)//trian
 	thrust::exclusive_scan(thrust::device, d_ptr_clipped_n_vert, d_ptr_clipped_n_vert + _npair, d_ptr_clipped_preSum); 
 
 	nPts = d_ptr_clipped_n_vert[_npair - 1] + d_ptr_clipped_preSum[_npair - 1];
+	//cout<<"nPts:"<<nPts<<endl;
 	
 	///////////points
 	float3* d_points;
@@ -624,9 +687,12 @@ void runKernel(float* &points, vtkIdType* &cells, int &nCells, int &nPts)//trian
 
 	int* d_preSum_compact;
 	unsigned int mem_size_preSum_compact = nCells * sizeof(int);
+    cudaMalloc((void **) &d_preSum_compact, mem_size_preSum_compact);
 	thrust::device_ptr<int> d_ptr_clipped_preSum_compact(d_preSum_compact);
 	thrust::exclusive_scan(thrust::device, d_ptr_clipped_n_vert, d_ptr_clipped_n_vert + nCells, d_ptr_clipped_preSum_compact);
+	//cout<<"nCells:"<<nCells<<endl;
 
+	
 	//cout<<"d_ptr_preSum_compact:"<<endl;
 	//for(int i = 0; i < 10; i++)
 	//	cout<<d_ptr_clipped_preSum_compact[i]<<endl;
@@ -635,21 +701,26 @@ void runKernel(float* &points, vtkIdType* &cells, int &nCells, int &nPts)//trian
 
 	unsigned int mem_size_cells = size_cells * sizeof(vtkIdType);
 
-	cudaFree(d_clipped_vert);
-	cudaFree(d_trgl_s);
-	cudaFree(d_trgl_c);
-	cudaFree(d_pair);
-	cudaFree(d_state);
+
 	
+	//size_t fr, ttl;
+	//cuMemGetInfo(&fr, &ttl);
+	//cout<<"fr:"<<fr<<endl;
+	//cout<<"ttl:"<<ttl<<endl;
+
 	vtkIdType* d_cells;
     error = cudaMalloc((void **) &d_cells, mem_size_cells);
+	CudaSafeCall( error );
 
-	dim3 block2(128, 1, 1);
+	dim3 block2(nBlock, 1, 1);
     dim3 grid2(ceil((float)size_cells / block2.x), 1, 1);
 	
 
-
+	cout<<"grid2:"<<grid2.x<<","<<grid2.y<<","<<grid2.z<<endl;
 	gen_cells_kernel<<<grid2, block2>>>(d_cells, nCells, d_preSum_compact, d_clipped_n_vert);
+	//printArray<vtkIdType>(d_cells, 100, 10, true);
+	//printArray<int>(d_preSum_compact, nCells, 10, false);
+	//printArray<int>(d_clipped_n_vert, nCells, 10, false);
 
 	vtkIdType* h_cells = (vtkIdType*)malloc(mem_size_cells);
 	error = cudaMemcpy(h_cells, d_cells, mem_size_cells, cudaMemcpyDeviceToHost);
@@ -657,6 +728,13 @@ void runKernel(float* &points, vtkIdType* &cells, int &nCells, int &nPts)//trian
 	cudaFree(d_clipped_n_vert);
 	cudaFree(d_preSum);
 	cudaFree(d_points);
+	
+	cudaFree(d_clipped_vert);
+	cudaFree(d_trgl_s);
+	cudaFree(d_trgl_c);
+	cudaFree(d_pair);
+	cudaFree(d_state);
+	cudaFree(d_preSum_compact);
 
 	points = (float*)h_points;
 	cells = h_cells;

@@ -135,7 +135,7 @@ inline T max3(T x1, T x2, T x3)
 
 #endif //CLIP_H
 __host__
-void runKernel(float* &points, vtkIdType* &cells, int &nCells, int &nPts);//triangle *t_s, triangle *t_c, int2 *pair, int npair)//, polygon *clipped, int *clipped_n)
+void runKernel(float* &points, vtkIdType* &cells, int &nCells, int &nPts, int nBlock);//triangle *t_s, triangle *t_c, int2 *pair, int npair)//, polygon *clipped, int *clipped_n)
 
 __host__
 void loadDataToDevice(float* trgl_s, float* trgl_c, int ntrgl, int *pair, int npair);

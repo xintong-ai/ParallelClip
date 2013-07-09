@@ -9,7 +9,7 @@
 #include <cmath>
 #include <vtkFloatArray.h>
 
-#define PARALLEL_ON 1
+#define PARALLEL_ON 0
 
 #include "clip.h"
 
@@ -31,7 +31,7 @@ static int nbinX = rangeX / STEP_X;
 static int nbinY = rangeY / STEP_Y;
 static int nbin = nbinX * nbinY;
 
-
+int _nBlock;
 
 struct IndexPair
 {
@@ -100,7 +100,7 @@ vector<int> GetBinTriangle(triangle q)
 vector<vector<int> > Binning(vector<triangle> q)
 {
     vector<vector<int> > CellsInBin(nbin, vector<int>(0));
-    for(int i = 0; i < q.size() / 2; i++)
+    for(int i = 0; i < q.size(); i++)
     {
         vector<int> bins = GetBinTriangle(q[i]);
         for(int b = 0; b < bins.size(); b++)
@@ -171,17 +171,15 @@ void writePolygonFile(char* filename, vector<vector<point> > poly)
 
 void writePolygonFileFastArray(char* filename, float* points_array, vtkIdType* cells_array, int nCells, int nPts)
 {
-	cout<<"cells_array:"<<endl;
-	for(int i = 0; i < 30; i++)
-		cout<<cells_array[nCells + nPts - 1 - i]<<endl;
+	//cout<<"cells_array:"<<endl;
+	//for(int i = 0; i < 30; i++)
+	//	cout<<cells_array[nCells + nPts - 1 - i]<<endl;
 	vtkIdTypeArray *cellIdx = vtkIdTypeArray::New();
-	cout<<"**2"<<endl;
 
 	//cells
 	cellIdx->SetArray(cells_array, nCells + nPts, 1);
 	vtkCellArray *cells = vtkCellArray::New();
 	cells->SetCells(nCells, cellIdx);
-	cout<<"**3"<<endl;
 
 	//points
 	vtkFloatArray *vtk_pts_array = vtkFloatArray::New();
@@ -190,13 +188,11 @@ void writePolygonFileFastArray(char* filename, float* points_array, vtkIdType* c
 	vtkPoints *pts = vtkPoints::New();
 	pts->SetDataTypeToFloat();
 	pts->SetData(vtk_pts_array);
-	cout<<"**4"<<endl;
 
 	//grid
     vtkSmartPointer<vtkUnstructuredGrid> grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
     grid->SetPoints(pts);
 	grid->SetCells((int)VTK_POLYGON, cells);
-	cout<<"**5"<<endl;
 	
 	//writer
     vtkNew<vtkUnstructuredGridWriter> writer;
@@ -347,8 +343,8 @@ void clipSets(vector<triangle> t_s, vector<triangle> t_c, vector<vector<int> > c
 	vtkIdType* cells;
 	int nCells;
 	int nPts;
-	cout<<"**0"<<endl;
-	runKernel(points, cells, nCells, nPts);
+	//cout<<"**0"<<endl;
+	runKernel(points, cells, nCells, nPts, _nBlock);
 	clock_t t2 = clock();
 	writePolygonFileFastArray("data/CAM_0_small_clipped_parallel.vtk", points, cells, nCells, nPts);
 #else
@@ -368,8 +364,6 @@ void clipSets(vector<triangle> t_s, vector<triangle> t_c, vector<vector<int> > c
 	cout<<"Clipping time:"<< (float)compute_time * 0.001 << "sec" << endl;
   //  return clippedAll;
 }
-
-
 
 int main( int argc, char *argv[] )
 {
@@ -406,6 +400,8 @@ int main( int argc, char *argv[] )
 
     ImportTriangles(points_s, cell_s, trias_s);
 
+	_nBlock = strtol(argv[1], NULL, 10);
+
 #if PARALLEL_ON
     initCUDA();
 #endif
@@ -416,7 +412,7 @@ int main( int argc, char *argv[] )
 	clipSets(trias_s, trias_c, cellsInBin);
 
     clock_t t3 = clock();
-    unsigned long compute_time = (t3 - t2) * 1000 / CLOCKS_PER_SEC;
+    unsigned long compute_time = (t3 - t1) * 1000 / CLOCKS_PER_SEC;
     cout<<"computing time:"<< (float)compute_time * 0.001 << "sec" << endl;
 
  //   writePolygonFile("data/CAM_0_small_clipped.vtk", clippedPoly);
