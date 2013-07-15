@@ -8,7 +8,6 @@
 #include <thrust/scan.h>
 #include <thrust/execution_policy.h>
 #include <thrust/device_vector.h>
-#define EPS 0.00001
 #define N_STATE 11
 #define N_INSTR 14
 #define CUDA_ERROR_CHECK
@@ -91,9 +90,7 @@ unsigned int mem_size_clipped_n_vert;
 //__constant__ instructSet STATE_SET[N_STATE];
 //#endif
 
-//#if NVCC_ON
-//__host__
-//#endif
+
 void setStateInstr()
 {
     for(int s = 0; s < N_STATE; s++)
@@ -171,12 +168,13 @@ inline bool BIntersectIncludeBoundary(pt p1, pt p2, pt q1, pt q2)
   if (!par) return 0;                               /* parallel lines */
 
   tp = ((q1.x - p1.x)*(q2.y - q1.y) - (q1.y - p1.y)*(q2.x - q1.x))/par;
-  if(tp<0 || tp>1 )
+  //shouldn't use EPS for 0 here, otherwise the generated triangle has many holes
+  if(tp< - EPS || tp> (1 + EPS) )
       return 0;
 
   tq = ((p2.y - p1.y)*(q1.x - p1.x) - (p2.x - p1.x)*(q1.y - p1.y))/par;
   //touching the boundary is not inside
-  if(tq<0 || tq>1)
+  if(tq< - EPS || tq> (1 + EPS))
       return 0;
 
   return 1;
@@ -187,6 +185,7 @@ inline bool BIntersectIncludeBoundary(pt p1, pt p2, pt q1, pt q2)
 #if NVCC_ON
 __host__ __device__
 #endif
+  //touching the boundary is not inside
 inline bool BIntersect(pt p1, pt p2, pt q1, pt q2)
 {
   float  tp, tq, par;
@@ -196,12 +195,81 @@ inline bool BIntersect(pt p1, pt p2, pt q1, pt q2)
 
   if (!par) return 0;                               /* parallel lines */
   tp = ((q1.x - p1.x)*(q2.y - q1.y) - (q1.y - p1.y)*(q2.x - q1.x))/par;
+	if(tp<EPS || tp> (1 - EPS) )
+      return 0;
+
   tq = ((p2.y - p1.y)*(q1.x - p1.x) - (p2.x - p1.x)*(q1.y - p1.y))/par;
 
-  //touching the boundary is not inside
-  if(tp<=0 || tp>=1 || tq<=0 || tq>=1) return 0;
+    if(tq<EPS || tq>(1 - EPS))
+      return 0;
+
+ // if(tp<=0 || tp>=1 || tq<=0 || tq>=1) return 0;
 
   return 1;
+}
+
+#if NVCC_ON
+__host__ __device__
+#endif
+inline void IntersectIncludeBoundary(pt p1, pt p2, pt q1, pt q2,
+        pt &pi, pt &qi)
+{
+    float tp, tq, par;
+
+    par = (float) ((p2.x - p1.x)*(q2.y - q1.y) -
+                   (p2.y - p1.y)*(q2.x - q1.x));
+
+    if (!par)
+        return;                               /* parallel lines */
+
+    tp = ((q1.x - p1.x)*(q2.y - q1.y) - (q1.y - p1.y)*(q2.x - q1.x))/par;
+    tq = ((p2.y - p1.y)*(q1.x - p1.x) - (p2.x - p1.x)*(q1.y - p1.y))/par;
+
+    if(tp< - EPS || tp>(1 + EPS) || tq< - EPS || tq> (1 + EPS))
+        return;
+
+//    pi.in = true;
+//    qi.in = true;
+    pi.x = p1.x + tp*(p2.x - p1.x);
+    pi.y = p1.y + tp*(p2.y - p1.y);
+    qi.x = pi.x;
+    qi.y = pi.y;
+
+    //this can be replaced with tp and tq with care
+    pi.loc = tp;// dist(p1.x, p1.y, x, y) / dist(p1.x, p1.y, p2.x, p2.y);
+    qi.loc = tq;// dist(q1.x, q1.y, x, y) / dist(q1.x, q1.y, q2.x, q2.y);
+}
+
+#if NVCC_ON
+__host__ __device__
+#endif
+inline void Intersect(pt p1, pt p2, pt q1, pt q2,
+        pt &pi, pt &qi)
+{
+    float tp, tq, par;
+
+    par = (float) ((p2.x - p1.x)*(q2.y - q1.y) -
+                   (p2.y - p1.y)*(q2.x - q1.x));
+
+    if (!par)
+        return;                               /* parallel lines */
+
+    tp = ((q1.x - p1.x)*(q2.y - q1.y) - (q1.y - p1.y)*(q2.x - q1.x))/par;
+    tq = ((p2.y - p1.y)*(q1.x - p1.x) - (p2.x - p1.x)*(q1.y - p1.y))/par;
+
+    if(tp<EPS || tp>(1 - EPS) || tq< EPS || tq> (1 - EPS))
+        return;
+
+//    pi.in = true;
+//    qi.in = true;
+    pi.x = p1.x + tp*(p2.x - p1.x);
+    pi.y = p1.y + tp*(p2.y - p1.y);
+    qi.x = pi.x;
+    qi.y = pi.y;
+
+    //this can be replaced with tp and tq with care
+    pi.loc = tp;// dist(p1.x, p1.y, x, y) / dist(p1.x, p1.y, p2.x, p2.y);
+    qi.loc = tq;// dist(q1.x, q1.y, x, y) / dist(q1.x, q1.y, q2.x, q2.y);
 }
 
 #if NVCC_ON
@@ -232,53 +300,24 @@ inline bool testInside(pt p, trgl t)
 	point v2 =  diffPt(p, t.p[0]); //P - A
 
 	// Compute dot products
-	float dot00 = dot(v0, v0);
-	float dot01 = dot(v0, v1);
-	float dot02 = dot(v0, v2);
-	float dot11 = dot(v1, v1);
-	float dot12 = dot(v1, v2);
+	double dot00 = dot(v0, v0);
+	double dot01 = dot(v0, v1);
+	double dot02 = dot(v0, v2);
+	double dot11 = dot(v1, v1);
+	double dot12 = dot(v1, v2);
 
 	// Compute barycentric coordinates
-	float invDenom = 1 / (dot00 * dot11 - dot01 * dot01);
+	double invDenom = 1 / (dot00 * dot11 - dot01 * dot01);
 	float u = (dot11 * dot02 - dot01 * dot12) * invDenom;
 	float v = (dot00 * dot12 - dot01 * dot02) * invDenom;
 
 	// Check if point is in triangle
-	return (u >= 0) && (v >= 0) && (u + v < 1);
+	//this EPS has to be very small
+	return (u > EPS) && (v > EPS) && (u + v < (1 - EPS));
 }
 
 
-#if NVCC_ON
-__host__ __device__
-#endif
-inline void Intersect(pt p1, pt p2, pt q1, pt q2,
-        pt &pi, pt &qi)
-{
-    float tp, tq, par;
 
-    par = (float) ((p2.x - p1.x)*(q2.y - q1.y) -
-                   (p2.y - p1.y)*(q2.x - q1.x));
-
-    if (!par)
-        return;                               /* parallel lines */
-
-    tp = ((q1.x - p1.x)*(q2.y - q1.y) - (q1.y - p1.y)*(q2.x - q1.x))/par;
-    tq = ((p2.y - p1.y)*(q1.x - p1.x) - (p2.x - p1.x)*(q1.y - p1.y))/par;
-
-    if(tp<0 || tp>1 || tq<0 || tq>1)
-        return;
-
-//    pi.in = true;
-//    qi.in = true;
-    pi.x = p1.x + tp*(p2.x - p1.x);
-    pi.y = p1.y + tp*(p2.y - p1.y);
-    qi.x = pi.x;
-    qi.y = pi.y;
-
-    //this can be replaced with tp and tq with care
-    pi.loc = tp;// dist(p1.x, p1.y, x, y) / dist(p1.x, p1.y, p2.x, p2.y);
-    qi.loc = tq;// dist(q1.x, q1.y, x, y) / dist(q1.x, q1.y, q2.x, q2.y);
-}
 
 
 
@@ -293,7 +332,9 @@ inline void AddIntersection(trgl ts, trgl tc, pt *clipped_array, int &clipped_cn
         for(int is = 0; is < 3; is++)
         {
             pt insect_s, insect_c;
-            Intersect(tc.p[ic], tc.p[(ic+1)%3], ts.p[is], ts.p[(is+1)%3 ],
+            //Intersect(tc.p[ic], tc.p[(ic+1)%3], ts.p[is], ts.p[(is+1)%3 ],
+            //        insect_c, insect_s);
+			IntersectIncludeBoundary(tc.p[ic], tc.p[(ic+1)%3], ts.p[is], ts.p[(is+1)%3 ],
                     insect_c, insect_s);
 
             if(insect_c.loc >= 0)
@@ -301,9 +342,12 @@ inline void AddIntersection(trgl ts, trgl tc, pt *clipped_array, int &clipped_cn
                 insect_c.loc += ic;
                 if(clipped_cnt > 0)
                 {
-                    if(insect_c.loc > clipped_array[clipped_cnt - 1].loc)
+					float loc1 = insect_c.loc;
+					float loc2 = clipped_array[clipped_cnt - 1].loc;
+					//this epsilon could not be too large because loc varies in a small range within [0, 1]
+                    if( loc1 - loc2 > EPS2)		
                         clipped_array[clipped_cnt++] = insect_c;
-                    else if(insect_c.loc < clipped_array[clipped_cnt - 1].loc)
+                    else if(loc2 - loc1 > EPS2)
                     {
                         clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
                         clipped_array[clipped_cnt - 1] = insect_c;
@@ -378,15 +422,16 @@ void clip(trgl ts, trgl tc, pt clipped_array[6], int &clipped_cnt, instructSet *
 	for(int i = 0; i < 3; i++)
 	{
 		int idx = a[i];
-		if(!tc.p[idx].loc && tc.p[idx + 1].loc)
+		if(tc.p[idx].loc == 0 && tc.p[idx + 1].loc == 1)
 			myswap(tc.p[idx], tc.p[idx + 1]);
-		if(!ts.p[idx].loc && ts.p[idx + 1].loc)
+		if(ts.p[idx].loc == 0 && ts.p[idx + 1].loc == 1)
 			myswap(ts.p[idx], ts.p[idx + 1]);
 	}
 
 	bool test;
 	if(1 == cnt_in_c && 1 == cnt_in_s)
-		test = BIntersectIncludeBoundary(ts.p[1], ts.p[2], tc.p[0], tc.p[1]);
+		//test = BIntersectIncludeBoundary(ts.p[1], ts.p[2], tc.p[0], tc.p[1]);
+		test = BIntersect(ts.p[1], ts.p[2], tc.p[0], tc.p[1]);
 
 	int state = -1;
 	if(0 == cnt_in_c && 0 == cnt_in_s)
@@ -416,7 +461,6 @@ void clip(trgl ts, trgl tc, pt clipped_array[6], int &clipped_cnt, instructSet *
     instructSet is = stateInstr[state];
 	if(is.doIns[0])//+sc
 		AddIntersection(tc, ts, clipped_array, clipped_cnt);
-	int tmp = clipped_cnt;
 	if(is.doIns[1])//+cs
 		AddIntersection(ts, tc, clipped_array, clipped_cnt);
 	if(is.doIns[12])
@@ -443,6 +487,24 @@ void clip(trgl ts, trgl tc, pt clipped_array[6], int &clipped_cnt, instructSet *
 		clipped_array[clipped_cnt++] = clipped_array[0];
 	if(is.doIns[11])//+r0_s0
 		clipped_array[0] = ts.p[0];
+
+
+	//if number of edge less than 3, then this is not a polygon
+	if(clipped_cnt > 0 && clipped_cnt < 3)
+	{
+	//	printTrgl(ts);
+	//	printTrgl(tc);
+	//	cout<<"state:"<<state<<endl;
+	//	cout<<"clipped_cnt:"<<clipped_cnt<<endl;
+		//cout<<"state:"<<state<<endl;
+		//cout<<"clipped_cnt:"<<clipped_cnt<<endl;
+		//cout<<"error:polygon has one or two vertices, impossible case!"<<endl;
+		clipped_cnt = 0;
+	//	exit(1);
+	}
+
+	//clipped_cnt = ts.p[0].x * 1000;//testInside(ts.p[0], tc);
+//	clipped_array[0] = ts.p[0];
 }
 
 
@@ -468,12 +530,18 @@ __global__ void clip_kernel(triangle *t_s, triangle *t_c, int2 *pair, int npair,
 	pt clipped_array[6];
 	int clipped_cnt = 0;
 	clip(ts, tc, clipped_array, clipped_cnt, d_state);
-	
+	//if(clipped_cnt > 6)
+	//{
+	//	clipped_cnt = 7;
+	//}
+	//
 	for(int i = 0; i < clipped_cnt; i++)
 	{
 		clipped[idx].p[i].x = clipped_array[i].x;
 		clipped[idx].p[i].y = clipped_array[i].y;
 	}
+	//if(clipped_cnt > 6)
+	//	asm("trap;");
 	clipped_n[idx] = clipped_cnt;
 }
 
@@ -483,7 +551,6 @@ vector<point> clip_serial(triangle t_s, triangle t_c)
 {
     vector<point> clipped;
     trgl ts, tc;
-    int i = 0;
     for(int i = 0; i < 3; i++)
     {
         ts.p[i].x = t_s.p[i].x;
@@ -646,17 +713,87 @@ __host__ void printArray(T *d_array, int size, int num, bool front)
 	}
 }
 
+__host__ void printTriangle(triangle* d_trgl, int i)
+{
+	unsigned int mem_size = sizeof(triangle);
+	triangle* h_trgl;
+	h_trgl = (triangle*)malloc(mem_size);
+	cudaError_t error = cudaMemcpy(h_trgl, d_trgl + i, mem_size, cudaMemcpyDeviceToHost);
+    CudaCheckError();
+	cout<< "print Triangle:"<<endl;
+	for(int j = 0; j < 3; j++)
+		cout<<h_trgl->p[j].x<<","<<h_trgl->p[j].y<<endl;
+	free(h_trgl);
+}
+
+
+
+__host__ void printPair(int2 *d_array, int size, int idx)
+{
+	unsigned int mem_size = size * sizeof(int2);
+	int2 *h_array;
+	h_array = (int2*)malloc(mem_size);
+	cudaError_t error = cudaMemcpy(h_array, d_array, mem_size, cudaMemcpyDeviceToHost);
+    CudaSafeCall(error);
+	cout<< "print printPair:"<<endl;
+	cout<<h_array[idx].x<<","<<h_array[idx].y<<endl;
+}
+
+__host__ void printPolygon(polygon *d_array, int size, int idx)
+{
+	unsigned int mem_size = size * sizeof(polygon);
+	polygon *h_array;
+	h_array = (polygon*)malloc(mem_size);
+	cudaError_t error = cudaMemcpy(h_array, d_array, mem_size, cudaMemcpyDeviceToHost);
+    CudaSafeCall(error);
+	cout<< "print polygon:"<<endl;
+	for(int i = 0; i < 6; i++)
+	{
+		cout<< h_array[idx].p[i].x << "," << h_array[idx].p[i].y  <<endl;
+	}
+}
+
+
+
+template <typename T>
+__host__ void checkArray(T *d_array, int size)
+{
+	unsigned int mem_size = size * sizeof(T);
+	T *h_array;
+	h_array = (T*)malloc(mem_size);
+	cudaError_t error = cudaMemcpy(h_array, d_array, mem_size, cudaMemcpyDeviceToHost);
+    CudaSafeCall(error);
+	for(int i = 0; i < size; i++)
+	{
+		if(h_array[i] > 6)
+			cout<<"check:"<<i<<","<<h_array[i]<<endl;
+	}
+}
+
 __host__
 void runKernel(float* &points, vtkIdType* &cells, int &nCells, int &nPts, int nBlock)//triangle *t_s, triangle *t_c, int2 *pair, int npair)//, polygon *clipped, int *clipped_n)
 {
 	dim3 block(nBlock, 1, 1);
     dim3 grid(ceil((float)_npair / block.x), 1, 1);
+
+	
+	//printTriangle((triangle*)d_trgl_s, 16546);
+	//printTriangle((triangle*)d_trgl_c, 88008);
 	
 	clip_kernel<<<grid, block>>>
 		((triangle*)d_trgl_s, (triangle*)d_trgl_c, 
 		(int2*)d_pair, _npair, 
 		d_clipped_vert, d_clipped_n_vert,
 		d_state);
+	CudaCheckError();
+
+
+
+	//printPair(d_pair, _npair, 681046);
+	//printPolygon(d_clipped_vert, _npair, 681046);
+
+
+	//checkArray<int>(d_clipped_n_vert, _npair);
 
 	cudaError_t error;
 
@@ -666,6 +803,7 @@ void runKernel(float* &points, vtkIdType* &cells, int &nCells, int &nPts, int nB
 
 	//previous sum for the number of vertices
 	thrust::device_ptr<int> d_ptr_clipped_n_vert(d_clipped_n_vert);
+	//cout<<"num of vert:"<<d_ptr_clipped_n_vert[681046]<<endl;
 	thrust::device_ptr<int> d_ptr_clipped_preSum(d_preSum);
 	thrust::exclusive_scan(thrust::device, d_ptr_clipped_n_vert, d_ptr_clipped_n_vert + _npair, d_ptr_clipped_preSum); 
 
@@ -729,7 +867,6 @@ void runKernel(float* &points, vtkIdType* &cells, int &nCells, int &nPts, int nB
 	cudaFree(d_preSum);
 	cudaFree(d_points);
 	
-	cudaFree(d_clipped_vert);
 	cudaFree(d_trgl_s);
 	cudaFree(d_trgl_c);
 	cudaFree(d_pair);

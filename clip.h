@@ -7,7 +7,9 @@ using namespace std;
 
 #define NVCC_ON 1	//using nvcc instead of g++
 
-#define EPS 0.00001
+#define EPS 0.0000001
+#define EPS2 0.000001
+
 
 //static int cnt = 0;
 

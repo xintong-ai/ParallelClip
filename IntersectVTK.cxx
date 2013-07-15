@@ -59,6 +59,13 @@ inline int GetYBin(double y)
     return ib;
 }
 
+
+inline void printTrgl(triangle t)
+{
+	cout<<"("<<t.p[0].x << ","<< t.p[1].x << "," << t.p[2].x << "," << t.p[0].x<<endl;
+	cout<<"("<<t.p[0].y << ","<< t.p[1].y << "," << t.p[2].y << "," << t.p[0].y<<endl;
+}
+
 vector<int> GetBinTriangle(triangle q)
 {
     vector<int> ret;
@@ -87,6 +94,15 @@ vector<int> GetBinTriangle(triangle q)
     //if the two points are too far away, ignore it
     if((xmax - xmin) > (nbinX / 2) || (ymax - ymin) > (nbinY / 2) )
         return ret;
+	//temperarily used to remove the point out of bundary
+	if(min3<float>(q.p[0].x , q.p[1].x, q.p[2].x) < X_MIN)
+		return ret;
+	if(max3<float>(q.p[0].x , q.p[1].x, q.p[2].x) > X_MAX)
+		return ret;
+	if(min3<float>(q.p[0].y , q.p[1].y, q.p[2].y) < Y_MIN)
+		return ret;
+	if(max3<float>(q.p[0].y , q.p[1].y, q.p[2].y) > Y_MAX)
+		return ret;
     for(int y = ymin; y <= ymax; y++)
     {
         for(int x = xmin; x <= xmax; x++)
@@ -133,6 +149,14 @@ void ImportTriangles(vtkPoints* vtkPts, vtkCellArray* vtkCls, vector<triangle> &
     }
 }
 
+void printPolygon(vector<point> polygon)
+{
+	cout<<"print polygon:"<<endl;
+	for(int i = 0; i < polygon.size(); i++)
+	{
+		cout<<polygon[i].x<<","<<polygon[i].y<<endl;
+	}
+}
 
 void writePolygonFile(char* filename, vector<vector<point> > poly)
 {
@@ -174,6 +198,8 @@ void writePolygonFileFastArray(char* filename, float* points_array, vtkIdType* c
 	//cout<<"cells_array:"<<endl;
 	//for(int i = 0; i < 30; i++)
 	//	cout<<cells_array[nCells + nPts - 1 - i]<<endl;
+	cout<<"nCells:"<<nCells<<endl;
+	cout<<"nPts:"<<nPts<<endl;
 	vtkIdTypeArray *cellIdx = vtkIdTypeArray::New();
 
 	//cells
@@ -199,6 +225,7 @@ void writePolygonFileFastArray(char* filename, float* points_array, vtkIdType* c
     writer->SetFileName(filename);
     writer->SetInputData(grid);
     writer->SetFileTypeToBinary();
+	//writer->SetFileTypeToASCII();
     writer->Write();
 }
 
@@ -328,15 +355,22 @@ void clipSets(vector<triangle> t_s, vector<triangle> t_c, vector<vector<int> > c
                 polyPairs.push_back(pr);
             }
         }
-		if(is % 100 == 0)	
+		if(is % 10000 == 0)	
 			cout<<"is = "<< is << endl;
     }
-
+//	cout<<"polyPair.size()"<<polyPairs.size()<<endl;
+	//polyPairs.assign(polyPairs.begin() + 17950, polyPairs.end());
+//	vector<IndexPair> polyPairs2;
+//	polyPairs2.assign(polyPairs.begin(), polyPairs.begin() + 500000);
 	clock_t t1 = clock();
     
 #if PARALLEL_ON
     loadDataToDevice(&t_s[0].p[0].x, &t_c[0].p[0].x, t_s.size(), &polyPairs[0].is, polyPairs.size());
 #endif
+
+	//cout<<"print triangles:"<<endl;
+	//printTrgl(t_s[16546]);
+	//printTrgl(t_c[88008]);
 
 #if PARALLEL_ON
 	float* points;
@@ -344,19 +378,36 @@ void clipSets(vector<triangle> t_s, vector<triangle> t_c, vector<vector<int> > c
 	int nCells;
 	int nPts;
 	//cout<<"**0"<<endl;
+
 	runKernel(points, cells, nCells, nPts, _nBlock);
 	clock_t t2 = clock();
 	writePolygonFileFastArray("data/CAM_0_small_clipped_parallel.vtk", points, cells, nCells, nPts);
 #else
+	//cout<<"print triangle s from serial:"<<endl;
+	//printTrgl(t_s[16546]);
+	//cout<<"print triangle c from serial:"<<endl;
+	//printTrgl(t_s[88008]);
     for(int i = 0; i < polyPairs.size(); i++)
     {
 		vector<point> clipped;
         clipped = clip_serial(t_s[polyPairs[i].is], t_c[polyPairs[i].ic]);
-        if(clipped.size()>0)
+
+		//printPolygon(clipped);
+		//cout<<"is:"<<polyPairs[i].is<<endl;
+		//cout<<"ic:"<<polyPairs[i].ic<<endl;
+		//exit(3);
+
+        if(clipped.size()>0)	//polygon has at least 3 edges
             clippedAll.push_back(clipped);
-        if((i % 100000) == 0)
+		//if(clippedAll.size() == 264924)
+		//{
+		//	cout<<"the i:"<<i << endl;
+		//	break;
+		//}
+        if((i % 1000000) == 0)
             cout<<"i = "<<i<<endl;
     }
+
 	clock_t t2 = clock();
 	writePolygonFileFast("data/CAM_0_small_clipped.vtk", clippedAll);
 #endif
@@ -365,8 +416,68 @@ void clipSets(vector<triangle> t_s, vector<triangle> t_c, vector<vector<int> > c
   //  return clippedAll;
 }
 
+void CheckVTKFiles()
+{
+	char filename1[100] = "data/CAM_0_small_clipped.vtk";//"/home/xtong/data/VTK-LatLon2/CAM_1_vec.vtk";
+    char filename2[100] = "data/CAM_0_small_clipped_parallel.vtk";//"/home/xtong/data/VTK-LatLon2/CAM_1_vec_warped_5times.vtk";
+
+
+    vtkSmartPointer<vtkUnstructuredGridReader> reader1 =
+      vtkSmartPointer<vtkUnstructuredGridReader>::New();
+    /************constraint polygon****************/
+    reader1->SetFileName(filename1);
+    reader1->Update(); // Needed because of GetScalarRange
+    vtkUnstructuredGrid* grid1 = reader1->GetOutput();
+    vtkPoints* points1 = grid1->GetPoints();
+    vtkCellArray* cell1 = grid1->GetCells();
+	//reader->CloseVTKFile();
+
+	vtkSmartPointer<vtkUnstructuredGridReader> reader2 =
+      vtkSmartPointer<vtkUnstructuredGridReader>::New();
+    reader2->SetFileName(filename2);
+    reader2->Update();
+    vtkUnstructuredGrid* grid2 = reader2->GetOutput();
+    vtkPoints* points2 = grid2->GetPoints();
+    vtkCellArray* cell2 = grid2->GetCells();
+
+	cout<<cell1->GetNumberOfCells()<<","<<cell2->GetNumberOfCells()<<"]"<<endl;
+
+		vtkNew<vtkIdList> pts1;
+	vtkNew<vtkIdList> pts2;
+	int size = cell1->GetData()->GetDataSize();
+	vtkIdTypeArray *idArray1 = cell1->GetData();
+	vtkIdTypeArray *idArray2 = cell2->GetData();
+	cout<<"size of cell array:"<<size<<endl;
+	for(int i = 0; i < size; i++)
+	{
+		//vtkSmartPointer<vtkIdList> pts1 = vtkSmartPointer<vtkIdList>::New();
+		//vtkSmartPointer<vtkIdList> pts2 = vtkSmartPointer<vtkIdList>::New();
+
+	///	cout<<cell1->GetNumberOfCells()<<endl;
+		//cell1->GetCell(i, pts1.GetPointer());
+		//cell2->GetCell(i, pts2.GetPointer());
+		
+		if(i % 10000 == 0)
+			cout<<i<<endl;
+			//cout<<pts1->GetId(0)<<",";
+			//cout<<pts2->GetId(0)<<endl;
+		if(idArray1->GetValue(i) != idArray2->GetValue(i))
+		{
+			cout<<"diff point:"<<i<<",";
+			cout<<idArray1->GetValue(i+ 1)<<endl;
+			exit(1);
+		}
+	}
+
+	reader1->CloseVTKFile();
+	reader2->CloseVTKFile();
+}
+
 int main( int argc, char *argv[] )
 {
+	//CheckVTKFiles();
+	//cout<<"all are the same!"<<endl;
+	//return 1;
 //	char filename_constraint[100] = "data/CAM_0_small_vec.vtk";//CAM_1_vec.vtk";//"/home/xtong/data/VTK-LatLon2/CAM_1_vec.vtk";
 //    char filename_subject[100] = "data/CAM_0_small_vec_warped_5times.vtk";//CAM_1_vec_warped_5times.vtk";//"/home/xtong/data/VTK-LatLon2/CAM_1_vec_warped_5times.vtk";
 
@@ -377,7 +488,6 @@ int main( int argc, char *argv[] )
     vector<triangle> trias_s;
     vtkSmartPointer<vtkUnstructuredGridReader> reader =
       vtkSmartPointer<vtkUnstructuredGridReader>::New();
-
     /************constraint polygon****************/
     reader->SetFileName(filename_constraint);
     reader->Update(); // Needed because of GetScalarRange
@@ -400,7 +510,10 @@ int main( int argc, char *argv[] )
 
     ImportTriangles(points_s, cell_s, trias_s);
 
-	_nBlock = strtol(argv[1], NULL, 10);
+	if(argc > 1)
+		_nBlock = strtol(argv[1], NULL, 10);
+	else
+		_nBlock = 512;
 
 #if PARALLEL_ON
     initCUDA();
