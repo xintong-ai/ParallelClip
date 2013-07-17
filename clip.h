@@ -7,9 +7,10 @@ using namespace std;
 
 #define NVCC_ON 1	//using nvcc instead of g++
 
-#define EPS 0.0000001
-#define EPS2 0.000001
-
+#define EPS 1E-7
+#define EPS2 1E-6
+#define EPS3 1E-14
+#define EPS4 1E-5
 
 //static int cnt = 0;
 
@@ -21,16 +22,15 @@ using namespace std;
 
 struct pt
 {
-    float x;
-    float y;
+	float2 coord;
     float loc;
 #if NVCC_ON
     __host__ __device__
 #endif
     pt(float _x, float _y)
     {
-        x = _x;
-        y = _y;
+        coord.x = _x;
+        coord.y = _y;
         loc = -1;
     }
 #if NVCC_ON
@@ -43,6 +43,29 @@ struct pt
 };
 
 
+struct pt3
+{
+	float3 coord;
+    float loc;
+#if NVCC_ON
+    __host__ __device__
+#endif
+    pt3(float _x, float _y, float _z)
+    {
+        coord.x = _x;
+        coord.y = _y;
+		coord.z = _z;
+        loc = -1;
+    }
+#if NVCC_ON
+    __host__ __device__
+#endif
+	pt3()
+    {
+        loc = -1;
+    }
+};
+
 struct trgl
 {
     //the first 3 points are the vertex
@@ -50,35 +73,41 @@ struct trgl
     pt p[3];
 };
 
-struct point
+struct trgl3
 {
-    float x;
-    float y;
-#if NVCC_ON
-    __host__ __device__
-#endif
-    point(float _x, float _y)
-    {
-        x = _x;
-        y = _y;
-    }
-    point(){};
+    //the first 3 points are the vertex
+    //others are reserved forintersection points
+    pt3 p[3];
 };
+//struct point
+//{
+//    float x;
+//    float y;
+//#if NVCC_ON
+//    __host__ __device__
+//#endif
+//    point(float _x, float _y)
+//    {
+//        x = _x;
+//        y = _y;
+//    }
+//    point(){};
+//};
 
 
 struct triangle
 {
-    point p[3];
+    float2 p[3];
 #if NVCC_ON
     __host__ __device__
 #endif
-    triangle(point p0, point p1, point p2)
+    triangle(float2 p0, float2 p1, float2 p2)
     {
         p[0] = p0;
         p[1] = p1;
         p[2] = p2;
     }
-    triangle(point _p[4])
+    triangle(float2 _p[4])
     {
         p[0] = _p[0];
         p[1] = _p[1];
@@ -149,5 +178,5 @@ __host__
 void finishCUDA();
 
 __host__
-vector<point> clip_serial(triangle t_s, triangle t_c);
+vector<float2> clip_serial(triangle t_s, triangle t_c);
 

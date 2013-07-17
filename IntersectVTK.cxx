@@ -62,8 +62,8 @@ inline int GetYBin(double y)
 
 inline void printTrgl(triangle t)
 {
-	cout<<"("<<t.p[0].x << ","<< t.p[1].x << "," << t.p[2].x << "," << t.p[0].x<<endl;
-	cout<<"("<<t.p[0].y << ","<< t.p[1].y << "," << t.p[2].y << "," << t.p[0].y<<endl;
+	cout<<" = ["<<t.p[0].x << ","<< t.p[1].x << "," << t.p[2].x << "," << t.p[0].x<<"];"<<endl;
+	cout<<" = ["<<t.p[0].y << ","<< t.p[1].y << "," << t.p[2].y << "," << t.p[0].y<<"];"<<endl;
 }
 
 vector<int> GetBinTriangle(triangle q)
@@ -131,7 +131,7 @@ vector<vector<int> > Binning(vector<triangle> q)
 void ImportTriangles(vtkPoints* vtkPts, vtkCellArray* vtkCls, vector<triangle> &trias)
 {
     vtkNew<vtkIdList> pts;
-    point p[4];
+    float2 p[4];
     double *coord;
     for(int c = 0; c < vtkCls->GetNumberOfCells(); c++)
     {
@@ -149,7 +149,7 @@ void ImportTriangles(vtkPoints* vtkPts, vtkCellArray* vtkCls, vector<triangle> &
     }
 }
 
-void printPolygon(vector<point> polygon)
+void printPolygon(vector<float2> polygon)
 {
 	cout<<"print polygon:"<<endl;
 	for(int i = 0; i < polygon.size(); i++)
@@ -158,7 +158,7 @@ void printPolygon(vector<point> polygon)
 	}
 }
 
-void writePolygonFile(char* filename, vector<vector<point> > poly)
+void writePolygonFile(char* filename, vector<vector<float2> > poly)
 {
     vtkSmartPointer<vtkUnstructuredGrid> grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
     vtkSmartPointer<vtkPoints> pts = vtkSmartPointer<vtkPoints>::New();
@@ -170,12 +170,12 @@ void writePolygonFile(char* filename, vector<vector<point> > poly)
     int count = 0;
     for(int p = 0; p < poly.size(); p++)
     {
-        vector<point> onePoly = poly[p];
+        vector<float2> onePoly = poly[p];
         //for each vertex
         vtkSmartPointer<vtkIdList> idl = vtkSmartPointer<vtkIdList>::New();
         for(int v = 0; v < onePoly.size(); v++)
         {
-            point p = onePoly[v];
+            float2 p = onePoly[v];
             pts->InsertNextPoint(p.x,p.y,0.0);
             idl->InsertNextId(count++);
         }
@@ -229,7 +229,7 @@ void writePolygonFileFastArray(char* filename, float* points_array, vtkIdType* c
     writer->Write();
 }
 
-void writePolygonFileFast(char* filename, vector<vector<point> > poly)
+void writePolygonFileFast(char* filename, vector<vector<float2> > poly)
 {
 	int nPts = 0;
 	vtkIdTypeArray *cellIdx = vtkIdTypeArray::New();
@@ -310,9 +310,15 @@ void clipSets(vector<triangle> t_s, vector<triangle> t_c, vector<vector<int> > c
 
     setStateInstr();
 
-    vector<vector<point> > clippedAll;
+    vector<vector<float2> > clippedAll;
     int ic;
     //for each quad in subject set11
+
+	//printTrgl(t_s[11833]);
+	//printTrgl(t_c[12376]);
+	//vector<float2> clipped2 = clip_serial(t_s[11833], t_c[12376]);
+	//printPolygon(clipped2);
+	//exit(2);
 
     vector<IndexPair> polyPairs;     //pair of polygons that need to be tested
     for(int is = 0; is < t_s.size(); is++)
@@ -389,8 +395,17 @@ void clipSets(vector<triangle> t_s, vector<triangle> t_c, vector<vector<int> > c
 	//printTrgl(t_s[88008]);
     for(int i = 0; i < polyPairs.size(); i++)
     {
-		vector<point> clipped;
+        if((i % 10000) == 0)
+			cout<<"i = "<<i<<endl;
+		//cout <<"is = "<<polyPairs[i].is<<endl;
+		//cout <<"ic = "<<polyPairs[i].ic<<endl;
+		vector<float2> clipped;
         clipped = clip_serial(t_s[polyPairs[i].is], t_c[polyPairs[i].ic]);
+		//if(clipped.size()> 0)
+		//{
+
+		//}
+		//cout<<"size = "<<clipped.size()<<endl;
 
 		//printPolygon(clipped);
 		//cout<<"is:"<<polyPairs[i].is<<endl;
@@ -404,8 +419,7 @@ void clipSets(vector<triangle> t_s, vector<triangle> t_c, vector<vector<int> > c
 		//	cout<<"the i:"<<i << endl;
 		//	break;
 		//}
-        if((i % 1000000) == 0)
-            cout<<"i = "<<i<<endl;
+
     }
 
 	clock_t t2 = clock();

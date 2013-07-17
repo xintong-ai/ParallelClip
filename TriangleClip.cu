@@ -8,16 +8,28 @@
 #include <thrust/scan.h>
 #include <thrust/execution_policy.h>
 #include <thrust/device_vector.h>
+//#include <math.h>
+//#include <math_constants.h>
+//#include <math_functions.h>
+
+
+
+
+
 #define N_STATE 11
 #define N_INSTR 14
 #define CUDA_ERROR_CHECK
+#define RADIUS 1
 
 #define CudaSafeCall( err ) __cudaSafeCall( err, __FILE__, __LINE__ )
 #define CudaCheckError()    __cudaCheckError( __FILE__, __LINE__ )
+
+#define M_PI_180 0.01745329252f
+#define M_180_PI 57.29577951f
  
 inline void __cudaSafeCall( cudaError err, const char *file, const int line )
 {
-#ifdef CUDA_ERROR_CHECK
+#ifdef CUDA_ERROR_CHECKcou
     if ( cudaSuccess != err )
     {
         fprintf( stderr, "cudaSafeCall() failed at %s:%i : %s\n",
@@ -28,6 +40,59 @@ inline void __cudaSafeCall( cudaError err, const char *file, const int line )
  
     return;
 }
+
+inline __host__ __device__ float3 cross(float3 a, float3 b)
+{ 
+    return make_float3(a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x); 
+}
+
+inline __host__ __device__ float2 operator-(float2 a, float2 b)
+{
+    return make_float2(a.x - b.x, a.y - b.y);
+}
+
+inline __host__ __device__ float3 operator-(float3 a, float3 b)
+{
+    return make_float3(a.x - b.x, a.y - b.y, a.z - b.z);
+}
+//
+//inline float rsqrtf(float x)
+//{
+//    return 1.0f / sqrtf(x);
+//}
+
+inline __host__ __device__ float dot(float2 a, float2 b)
+{ 
+    return a.x * b.x + a.y * b.y;
+}
+
+inline __host__ __device__ float dot(float3 a, float3 b)
+{ 
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+inline __host__ __device__ float3 operator*(float3 a, float b)
+{
+    return make_float3(a.x * b, a.y * b, a.z * b);
+}
+
+inline __host__ __device__ float3 normalize(float3 v)
+{
+    float invLen = rsqrtf(dot(v, v));
+    return v * invLen;
+}
+
+inline __host__ __device__ float length(float3 v)
+{
+    return sqrtf(dot(v, v));
+}
+
+inline __host__ __device__ float3 operator-(float3 &a)
+{
+    return make_float3(-a.x, -a.y, -a.z);
+}
+
+
  
 inline void __cudaCheckError( const char *file, const int line )
 {
@@ -158,7 +223,7 @@ void setStateInstr()
 __host__ __device__
 #endif
 //touching boundary is also intersect
-inline bool BIntersectIncludeBoundary(pt p1, pt p2, pt q1, pt q2)
+inline bool BIntersectIncludeBoundary(float2 p1, float2 p2, float2 q1, float2 q2)
 {
   float  tp, tq, par;
 
@@ -180,13 +245,42 @@ inline bool BIntersectIncludeBoundary(pt p1, pt p2, pt q1, pt q2)
   return 1;
 }
 
+#if NVCC_ON
+__host__ __device__
+#endif
+inline bool on_arc(float3 p1, float3 p2, float3 q)
+{
+	if(length(p1 - q) < EPS || length(p2 - q) < EPS)
+		return true;
+	else
+		return acos(dot(p1, q)) + acos(dot(p2, q)) - acos(dot(p2, p1)) < EPS4;
+}
 
+#if NVCC_ON
+__host__ __device__
+#endif
+inline bool BIntersect(float3 p1, float3 p2, float3 q1, float3 q2)
+{
+	float3 n1 = cross(p1, p2);
+	float3 n2 = cross(q1, q2);
+	n1 = normalize(n1);
+	n2 = normalize(n2);
+	if(length(n1 - n2) < EPS3)
+		return false;
+	else
+	{
+		float3 L = normalize(cross(n1, n2));
+		float3 L_opp = -L;
+		return ((on_arc(p1, p2, L) && on_arc(p1, p2, L)) ||
+			(on_arc(p1, p2, L_opp) && on_arc(p1, p2, L_opp) ));
+	}
+}
 
 #if NVCC_ON
 __host__ __device__
 #endif
   //touching the boundary is not inside
-inline bool BIntersect(pt p1, pt p2, pt q1, pt q2)
+inline bool BIntersect(float2 p1, float2 p2, float2 q1, float2 q2)
 {
   float  tp, tq, par;
 
@@ -211,8 +305,8 @@ inline bool BIntersect(pt p1, pt p2, pt q1, pt q2)
 #if NVCC_ON
 __host__ __device__
 #endif
-inline void IntersectIncludeBoundary(pt p1, pt p2, pt q1, pt q2,
-        pt &pi, pt &qi)
+inline void IntersectIncludeBoundary(float2 p1, float2 p2, float2 q1, float2 q2,
+        pt &pi)
 {
     float tp, tq, par;
 
@@ -230,21 +324,21 @@ inline void IntersectIncludeBoundary(pt p1, pt p2, pt q1, pt q2,
 
 //    pi.in = true;
 //    qi.in = true;
-    pi.x = p1.x + tp*(p2.x - p1.x);
-    pi.y = p1.y + tp*(p2.y - p1.y);
-    qi.x = pi.x;
-    qi.y = pi.y;
+	pi.coord.x = p1.x + tp*(p2.x - p1.x);
+    pi.coord.y = p1.y + tp*(p2.y - p1.y);
+    //qi.x = pi.x;
+    //qi.y = pi.y;
 
     //this can be replaced with tp and tq with care
     pi.loc = tp;// dist(p1.x, p1.y, x, y) / dist(p1.x, p1.y, p2.x, p2.y);
-    qi.loc = tq;// dist(q1.x, q1.y, x, y) / dist(q1.x, q1.y, q2.x, q2.y);
+    //qi.loc = tq;// dist(q1.x, q1.y, x, y) / dist(q1.x, q1.y, q2.x, q2.y);
 }
 
 #if NVCC_ON
 __host__ __device__
 #endif
-inline void Intersect(pt p1, pt p2, pt q1, pt q2,
-        pt &pi, pt &qi)
+inline void Intersect(float2 p1, float2 p2, float2 q1, float2 q2,
+        pt &pi)
 {
     float tp, tq, par;
 
@@ -262,32 +356,60 @@ inline void Intersect(pt p1, pt p2, pt q1, pt q2,
 
 //    pi.in = true;
 //    qi.in = true;
-    pi.x = p1.x + tp*(p2.x - p1.x);
-    pi.y = p1.y + tp*(p2.y - p1.y);
-    qi.x = pi.x;
-    qi.y = pi.y;
+	pi.coord.x = p1.x + tp*(p2.x - p1.x);
+    pi.coord.y = p1.y + tp*(p2.y - p1.y);
+    //qi.x = pi.x;
+    //qi.y = pi.y;
 
     //this can be replaced with tp and tq with care
     pi.loc = tp;// dist(p1.x, p1.y, x, y) / dist(p1.x, p1.y, p2.x, p2.y);
-    qi.loc = tq;// dist(q1.x, q1.y, x, y) / dist(q1.x, q1.y, q2.x, q2.y);
+    //qi.loc = tq;// dist(q1.x, q1.y, x, y) / dist(q1.x, q1.y, q2.x, q2.y);
 }
 
 #if NVCC_ON
 __host__ __device__
 #endif
-inline point diffPt(pt p1, pt p2)
+inline void Intersect(float3 p1, float3 p2, float3 q1, float3 q2,
+	pt3 &pi)
 {
-	point p(p1.x - p2.x, p1.y - p2.y);
-	return p;
+	float3 n1 = cross(p1, p2);
+	float3 n2 = cross(q1, q2);
+	n1 = normalize(n1);
+	n2 = normalize(n2);
+	if(length(n1 - n2) >= EPS3)
+	{
+		float3 L = normalize(cross(n1, n2));
+		float3 L_opp = -L;
+		if(on_arc(p1, p2, L) && on_arc(q1, q2, L))
+		{
+			pi.coord = L;
+			pi.loc = length(p1 - L) / length(p2 - p1);
+		}
+		else if(on_arc(p1, p2, L_opp) && on_arc(q1, q2, L_opp))
+		{
+			pi.coord = L_opp;
+			pi.loc = length(p1 - L_opp) / length(p2 - p1);
+		}
+	}
+	return;
 }
+//
+//#if NVCC_ON
+//__host__ __device__
+//#endif
+//inline point diffPt(pt p1, pt p2)
+//{
+//	point p(p1.x - p2.x, p1.y - p2.y);
+//	return p;
+//}
 
-#if NVCC_ON
-__host__ __device__
-#endif
-inline float dot(point p1, point p2)
-{
-	return p1.x * p2.x + p1.y * p2.y;
-}
+//#if NVCC_ON
+//__host__ __device__
+//#endif
+//inline float dot(float2 p1, float2 p2)
+//{
+//	return p1.x * p2.x + p1.y * p2.y;
+//}
 
 #if NVCC_ON
 __host__ __device__
@@ -295,19 +417,19 @@ __host__ __device__
 inline bool testInside(pt p, trgl t)
 {
 	// Compute vectors        
-	point v0 = diffPt(t.p[2], t.p[0]);//C - A
-	point v1 = diffPt(t.p[1], t.p[0]);// B - A
-	point v2 =  diffPt(p, t.p[0]); //P - A
+	float2 v0 = t.p[2].coord - t.p[0].coord;//C - A
+	float2 v1 = t.p[1].coord - t.p[0].coord;// B - A
+	float2 v2 =  p.coord - t.p[0].coord; //P - A
 
 	// Compute dot products
-	double dot00 = dot(v0, v0);
-	double dot01 = dot(v0, v1);
-	double dot02 = dot(v0, v2);
-	double dot11 = dot(v1, v1);
-	double dot12 = dot(v1, v2);
+	float dot00 = dot(v0, v0);
+	float dot01 = dot(v0, v1);
+	float dot02 = dot(v0, v2);
+	float dot11 = dot(v1, v1);
+	float dot12 = dot(v1, v2);
 
 	// Compute barycentric coordinates
-	double invDenom = 1 / (dot00 * dot11 - dot01 * dot01);
+	float invDenom = 1 / (dot00 * dot11 - dot01 * dot01);
 	float u = (dot11 * dot02 - dot01 * dot12) * invDenom;
 	float v = (dot00 * dot12 - dot01 * dot02) * invDenom;
 
@@ -317,10 +439,73 @@ inline bool testInside(pt p, trgl t)
 }
 
 
+#if NVCC_ON
+__host__ __device__
+#endif
+inline bool testInside(float3 p, trgl3 t)
+{
+	float3 n[3], next, v1, v2;
+	for(int i = 0; i < 3; i++)
+	{
+		next = t.p[(i + 1) % 3].coord;
+		v1 = next - p;
+		v2 = next - t.p[i].coord;
+		n[i] = cross(v1, v2);
+		n[i] = normalize(n[i]);
+	}
 
+	for(int i = 0; i < 3; i++)
+	{
+		if(dot(n[i], n[i + 1]) < EPS3)
+			return false;
+	}
+	return true;
+}
 
+#if NVCC_ON
+__host__ __device__
+#endif
+inline void AddIntersection(trgl3 ts, trgl3 tc, pt3 *clipped_array, int &clipped_cnt)
+{
+    for(int ic = 0; ic < 3; ic++)
+    {
+        for(int is = 0; is < 3; is++)
+        {
+            pt3 insect_c;
+            //Intersect(tc.p[ic], tc.p[(ic+1)%3], ts.p[is], ts.p[(is+1)%3 ],
+            //        insect_c, insect_s);
+			/*IntersectIncludeBoundary(tc.p[ic], tc.p[(ic+1)%3], ts.p[is], ts.p[(is+1)%3 ],
+                    insect_c, insect_s);*/
+			Intersect(tc.p[ic].coord, tc.p[(ic+1)%3].coord, ts.p[is].coord, ts.p[(is+1)%3 ].coord, insect_c);
 
-
+            if(insect_c.loc >= 0)
+            {
+                insect_c.loc += ic;
+                if(clipped_cnt > 0)
+                {
+					float loc1 = insect_c.loc;
+					float loc2 = clipped_array[clipped_cnt - 1].loc;
+					//this epsilon could not be too large because loc varies in a small range within [0, 1]
+                    if( loc1 - loc2 > EPS2)		
+                        clipped_array[clipped_cnt++] = insect_c;
+                    else if(loc2 - loc1 > EPS2)
+                    {
+                        clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
+                        clipped_array[clipped_cnt - 1] = insect_c;
+                        clipped_cnt++;
+                    }
+                    //else :insect_c.loc == clipped_vert[isect_cnt - 1].loc
+                    //don't add anything
+                }
+                else
+                {
+                    clipped_array[0] = insect_c;
+                    clipped_cnt++;
+                }
+            }
+        }
+    }
+}
 
 #if NVCC_ON
 __host__ __device__
@@ -331,11 +516,11 @@ inline void AddIntersection(trgl ts, trgl tc, pt *clipped_array, int &clipped_cn
     {
         for(int is = 0; is < 3; is++)
         {
-            pt insect_s, insect_c;
+            pt insect_c;
             //Intersect(tc.p[ic], tc.p[(ic+1)%3], ts.p[is], ts.p[(is+1)%3 ],
             //        insect_c, insect_s);
-			IntersectIncludeBoundary(tc.p[ic], tc.p[(ic+1)%3], ts.p[is], ts.p[(is+1)%3 ],
-                    insect_c, insect_s);
+			IntersectIncludeBoundary(tc.p[ic].coord, tc.p[(ic+1)%3].coord, ts.p[is].coord, ts.p[(is+1)%3 ].coord,
+                    insect_c);
 
             if(insect_c.loc >= 0)
             {
@@ -367,12 +552,13 @@ inline void AddIntersection(trgl ts, trgl tc, pt *clipped_array, int &clipped_cn
 }
 
 //have to use __host__ __device__ here, could not recognize template???
+template <typename T>
 #if NVCC_ON
 __host__ __device__
 #endif
-inline void myswap(pt &a, pt &b)
+inline void myswap(T &a, T &b)
 {
-	pt tmp = a;
+	T tmp = a;
 	a = b;
 	b = tmp;
 }
@@ -382,8 +568,8 @@ __host__
 #endif
 inline void printTrgl(trgl t)
 {
-	cout<<"("<<t.p[0].x << ","<< t.p[1].x << "," << t.p[2].x << "," << t.p[0].x<<endl;
-	cout<<"("<<t.p[0].y << ","<< t.p[1].y << "," << t.p[2].y << "," << t.p[0].y<<endl;
+	cout<<"("<<t.p[0].coord.x << ","<< t.p[1].coord.x << "," << t.p[2].coord.x << "," << t.p[0].coord.x<<endl;
+	cout<<"("<<t.p[0].coord.y << ","<< t.p[1].coord.y << "," << t.p[2].coord.y << "," << t.p[0].coord.y<<endl;
 }
 
 __host__ void GetResultToHost()
@@ -399,12 +585,161 @@ __host__ void GetResultToHost()
 	CudaSafeCall(error);
 }
 
+__host__ __device__
+inline void Geo2Cart(trgl3 &cart, triangle &geo)
+{
+	float lat;
+	float lon;
+	for(int i = 0; i < 3; i++)
+	{
+		lon = geo.p[i].x * M_PI_180;
+		lat = geo.p[i].y * M_PI_180;
+		cart.p[i].coord.x = RADIUS * cos(lat) * cos(lon);
+		cart.p[i].coord.y = RADIUS * cos(lat) * sin(lon);
+		cart.p[i].coord.z = RADIUS * sin(lat);
+	}
+}
+
+__host__ __device__
+inline void Cart2Geo(float2 &geo, float3 &cart)
+{
+	geo.x = atan2(cart.y, cart.x) * M_180_PI;
+	geo.y = asin(cart.z / RADIUS) * M_180_PI;
+	if(geo.x < 0)
+		geo.x = geo.x + 360;
+}
 
 #if NVCC_ON
 __host__ __device__
 #endif
-void clip(trgl ts, trgl tc, pt clipped_array[6], int &clipped_cnt, instructSet *stateInstr)
+void clip3(triangle *t_s1, triangle *t_c1, pt clipped_array_out[12], int &clipped_cnt, instructSet *stateInstr)
 {
+	trgl3 ts, tc;
+	pt3 clipped_array[12];
+	Geo2Cart(ts, *t_s1);
+	Geo2Cart(tc, *t_c1);
+	//mark inside or outside for the triangle vertices
+	//and count the number of inside vertices
+	int cnt_in_s = 0, cnt_in_c = 0;
+	for(int i = 0; i < 3; i++)
+	{
+		if(tc.p[i].loc = testInside(tc.p[i].coord, ts))
+		   cnt_in_c++;
+
+		if(ts.p[i].loc = testInside(ts.p[i].coord, tc))
+			cnt_in_s++;
+	}
+
+	//make the "in" vertices in the front of the array
+	int a[3] = {0, 1, 0};
+	for(int i = 0; i < 3; i++)
+	{
+		int idx = a[i];
+		if(tc.p[idx].loc == 0 && tc.p[idx + 1].loc == 1)
+			myswap<pt3>(tc.p[idx], tc.p[idx + 1]);
+		if(ts.p[idx].loc == 0 && ts.p[idx + 1].loc == 1)
+			myswap<pt3>(ts.p[idx], ts.p[idx + 1]);
+	}
+
+	bool test;
+	if(1 == cnt_in_c && 1 == cnt_in_s)
+		//test = BIntersectIncludeBoundary(ts.p[1], ts.p[2], tc.p[0], tc.p[1]);
+		test = BIntersect(ts.p[1].coord, ts.p[2].coord, tc.p[0].coord, tc.p[1].coord);
+
+	int state = -1;
+	if(0 == cnt_in_c && 0 == cnt_in_s)
+		state = 0;
+	else if(0 == cnt_in_c && 1 == cnt_in_s)
+		state = 1;
+	else if(1 == cnt_in_c && 0 == cnt_in_s)
+		state = 2;
+	else if(0 == cnt_in_c && 2 == cnt_in_s)
+		state = 3;
+	else if(2 == cnt_in_c && 0 == cnt_in_s)
+		state = 4;
+	else if(0 == cnt_in_c && 3 == cnt_in_s)
+		state = 5;
+	else if(3 == cnt_in_c && 0 == cnt_in_s)
+		state = 6;
+	else if(1 == cnt_in_c && 2 == cnt_in_s)
+		state = 7;
+	else if(2 == cnt_in_c && 1 == cnt_in_s)
+		state = 8;
+	else if(1 == cnt_in_c && 1 == cnt_in_s && !test)
+		state = 9;
+	else// if(1 == cnt_in_c && 1 == cnt_in_s && !test1) and (1 == cnt_in_c && 1 == cnt_in_s && test1 && test2)
+		state = 10;
+	//+cs
+
+    instructSet is = stateInstr[state];
+	if(is.doIns[0])//+sc
+		AddIntersection(tc, ts, clipped_array, clipped_cnt);
+	if(is.doIns[1])//+cs
+		AddIntersection(ts, tc, clipped_array, clipped_cnt);
+	if(is.doIns[12])
+		clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
+	if(is.doIns[2])//+c0-
+		clipped_array[clipped_cnt - 1] = tc.p[0];
+	if(is.doIns[3])//+s0-
+		clipped_array[clipped_cnt - 1] = ts.p[0];
+	if(is.doIns[13])
+		clipped_cnt++;
+	if(is.doIns[4])//+s0
+		clipped_array[clipped_cnt++] = ts.p[0];
+	if(is.doIns[5])//+c0
+		clipped_array[clipped_cnt++] = tc.p[0];
+	if(is.doIns[6])//+s1
+		clipped_array[clipped_cnt++] = ts.p[1];
+	if(is.doIns[7])//+c1
+		clipped_array[clipped_cnt++] = tc.p[1];
+	if(is.doIns[8])//+s2
+		clipped_array[clipped_cnt++] = ts.p[2];
+	if(is.doIns[9])//+c2
+		clipped_array[clipped_cnt++] = tc.p[2];
+	if(is.doIns[10])//+r0
+		clipped_array[clipped_cnt++] = clipped_array[0];
+	if(is.doIns[11])//+r0_s0
+		clipped_array[0] = ts.p[0];
+
+
+	//if number of edge less than 3, then this is not a polygon
+	if(clipped_cnt > 0 && clipped_cnt < 3)
+	{
+	//	printTrgl(ts);
+	//	printTrgl(tc);
+	//	cout<<"state:"<<state<<endl;
+	//	cout<<"clipped_cnt:"<<clipped_cnt<<endl;
+		//cout<<"state:"<<state<<endl;
+		//cout<<"clipped_cnt:"<<clipped_cnt<<endl;
+		//cout<<"error:polygon has one or two vertices, impossible case!"<<endl;
+		clipped_cnt = 0;
+	//	exit(1);
+	}
+	//else if(clipped_cnt > 6)
+	//	clipped_cnt = 6;
+
+	for(int i = 0; i < clipped_cnt; i++)
+	{
+		Cart2Geo(clipped_array_out[i].coord, clipped_array[i].coord);
+	}
+	//clipped_cnt = ts.p[0].x * 1000;//testInside(ts.p[0], tc);
+//	clipped_array[0] = ts.p[0];
+}
+
+
+#if NVCC_ON
+__host__ __device__
+#endif
+void clip(triangle *t_s1, triangle *t_c1, pt clipped_array[6], int &clipped_cnt, instructSet *stateInstr)
+{
+	trgl ts, tc;
+    for(int i = 0; i < 3; i++)
+    {
+		ts.p[i].coord.x = t_s1->p[i].x;
+        ts.p[i].coord.y = t_s1->p[i].y;
+        tc.p[i].coord.x = t_c1->p[i].x;
+        tc.p[i].coord.y = t_c1->p[i].y;
+    }
 	//mark inside or outside for the triangle vertices
 	//and count the number of inside vertices
 	int cnt_in_s = 0, cnt_in_c = 0;
@@ -431,7 +766,7 @@ void clip(trgl ts, trgl tc, pt clipped_array[6], int &clipped_cnt, instructSet *
 	bool test;
 	if(1 == cnt_in_c && 1 == cnt_in_s)
 		//test = BIntersectIncludeBoundary(ts.p[1], ts.p[2], tc.p[0], tc.p[1]);
-		test = BIntersect(ts.p[1], ts.p[2], tc.p[0], tc.p[1]);
+		test = BIntersect(ts.p[1].coord, ts.p[2].coord, tc.p[0].coord, tc.p[1].coord);
 
 	int state = -1;
 	if(0 == cnt_in_c && 0 == cnt_in_s)
@@ -515,21 +850,15 @@ __global__ void clip_kernel(triangle *t_s, triangle *t_c, int2 *pair, int npair,
 	if (idx >= npair)
 		return;
 
-	triangle *t_s1 = &t_s[pair[idx].x];
-	triangle *t_c1 = &t_c[pair[idx].y];
+	//triangle *t_s1 = ;
+	//triangle *t_c1 = ;
 
-    trgl ts, tc;
-    for(int i = 0; i < 3; i++)
-    {
-        ts.p[i].x = t_s1->p[i].x;
-        ts.p[i].y = t_s1->p[i].y;
-        tc.p[i].x = t_c1->p[i].x;
-        tc.p[i].y = t_c1->p[i].y;
-    }
 
-	pt clipped_array[6];
+
+	pt clipped_array[12];
 	int clipped_cnt = 0;
-	clip(ts, tc, clipped_array, clipped_cnt, d_state);
+	//clip(&t_s[pair[idx].x], &t_c[pair[idx].y], clipped_array, clipped_cnt, d_state);
+	clip3(&t_s[pair[idx].x], &t_c[pair[idx].y], clipped_array, clipped_cnt, d_state);
 	//if(clipped_cnt > 6)
 	//{
 	//	clipped_cnt = 7;
@@ -537,8 +866,8 @@ __global__ void clip_kernel(triangle *t_s, triangle *t_c, int2 *pair, int npair,
 	//
 	for(int i = 0; i < clipped_cnt; i++)
 	{
-		clipped[idx].p[i].x = clipped_array[i].x;
-		clipped[idx].p[i].y = clipped_array[i].y;
+		clipped[idx].p[i].x = clipped_array[i].coord.x;
+		clipped[idx].p[i].y = clipped_array[i].coord.y;
 	}
 	//if(clipped_cnt > 6)
 	//	asm("trap;");
@@ -547,24 +876,25 @@ __global__ void clip_kernel(triangle *t_s, triangle *t_c, int2 *pair, int npair,
 
 
 __host__
-vector<point> clip_serial(triangle t_s, triangle t_c)
+vector<float2> clip_serial(triangle t_s, triangle t_c)
 {
-    vector<point> clipped;
-    trgl ts, tc;
-    for(int i = 0; i < 3; i++)
-    {
-        ts.p[i].x = t_s.p[i].x;
-        ts.p[i].y = t_s.p[i].y;
-        tc.p[i].x = t_c.p[i].x;
-        tc.p[i].y = t_c.p[i].y;
-    }
-	pt clipped_array[6];
+    vector<float2> clipped;
+    //trgl ts, tc;
+    //for(int i = 0; i < 3; i++)
+    //{
+    //    ts.p[i].x = t_s.p[i].x;
+    //    ts.p[i].y = t_s.p[i].y;
+    //    tc.p[i].x = t_c.p[i].x;
+    //    tc.p[i].y = t_c.p[i].y;
+    //}
+	pt clipped_array[12];
 	int clipped_cnt = 0;
-	clip(ts, tc, clipped_array, clipped_cnt, _stateSet);
+	//clip(&t_s, &t_c, clipped_array, clipped_cnt, _stateSet);
+	clip3(&t_s, &t_c, clipped_array, clipped_cnt, _stateSet);
 
     for(int i = 0; i < clipped_cnt; i++)
     {
-        point p(clipped_array[i].x, clipped_array[i].y);
+		float2 p = make_float2(clipped_array[i].coord.x, clipped_array[i].coord.y);
         clipped.push_back(p);
     }
     return clipped;
