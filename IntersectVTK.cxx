@@ -33,6 +33,13 @@ static int nbin = nbinX * nbinY;
 
 int _nBlock;
 
+inline float dist_2(float2 v1, float2 v2)
+{
+	float x = v1.x - v2.x;
+	float y = v1.y - v2.y;
+	return (x * x + y * y);
+}
+
 struct IndexPair
 {
     int is;
@@ -60,11 +67,7 @@ inline int GetYBin(double y)
 }
 
 
-inline void printTrgl(triangle t)
-{
-	cout<<" = ["<<t.p[0].x << ","<< t.p[1].x << "," << t.p[2].x << "," << t.p[0].x<<"];"<<endl;
-	cout<<" = ["<<t.p[0].y << ","<< t.p[1].y << "," << t.p[2].y << "," << t.p[0].y<<"];"<<endl;
-}
+
 
 vector<int> GetBinTriangle(triangle q)
 {
@@ -142,10 +145,20 @@ void ImportTriangles(vtkPoints* vtkPts, vtkCellArray* vtkCls, vector<triangle> &
             p[i].x = coord[0];
             p[i].y = coord[1];
         }
-        triangle t1(p[0], p[1], p[2]);
-        trias.push_back(t1);
-        triangle t2(p[0], p[2], p[3]);
-        trias.push_back(t2);
+		if(dist_2(p[0], p[2]) < dist_2(p[1], p[3]) )
+		{
+			triangle t1(p[0], p[1], p[2]);
+			trias.push_back(t1);
+			triangle t2(p[0], p[2], p[3]);
+			trias.push_back(t2);
+		}
+		else
+		{	
+			triangle t1(p[0], p[1], p[3]);
+			trias.push_back(t1);
+			triangle t2(p[1], p[2], p[3]);
+			trias.push_back(t2);
+		}
     }
 }
 
@@ -395,7 +408,7 @@ void clipSets(vector<triangle> t_s, vector<triangle> t_c, vector<vector<int> > c
 	//printTrgl(t_s[88008]);
     for(int i = 0; i < polyPairs.size(); i++)
     {
-        if((i % 10000) == 0)
+        if((i % 100000) == 0)
 			cout<<"i = "<<i<<endl;
 		//cout <<"is = "<<polyPairs[i].is<<endl;
 		//cout <<"ic = "<<polyPairs[i].ic<<endl;

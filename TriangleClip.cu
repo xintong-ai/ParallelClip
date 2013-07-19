@@ -76,6 +76,12 @@ inline __host__ __device__ float3 operator*(float3 a, float b)
     return make_float3(a.x * b, a.y * b, a.z * b);
 }
 
+inline __host__ __device__ float3 operator/(float3 a, float b)
+{
+    return make_float3(a.x / b, a.y / b, a.z / b);
+}
+
+
 inline __host__ __device__ float3 normalize(float3 v)
 {
     float invLen = rsqrtf(dot(v, v));
@@ -253,9 +259,10 @@ inline bool on_arc(float3 p1, float3 p2, float3 q)
 	if(length(p1 - q) < EPS || length(p2 - q) < EPS)
 		return true;
 	else
-		return acos(dot(p1, q)) + acos(dot(p2, q)) - acos(dot(p2, p1)) < EPS4;
+		return acos(dot(p1, q)) + acos(dot(p2, q)) - acos(dot(p2, p1)) < EPS3;
 }
 
+/*
 #if NVCC_ON
 __host__ __device__
 #endif
@@ -271,10 +278,150 @@ inline bool BIntersect(float3 p1, float3 p2, float3 q1, float3 q2)
 	{
 		float3 L = normalize(cross(n1, n2));
 		float3 L_opp = -L;
-		return ((on_arc(p1, p2, L) && on_arc(p1, p2, L)) ||
-			(on_arc(p1, p2, L_opp) && on_arc(p1, p2, L_opp) ));
+		return ((on_arc(p1, p2, L) && on_arc(q1, q2, L)) ||
+			(on_arc(p1, p2, L_opp) && on_arc(q1, q2, L_opp) ));
 	}
 }
+*/
+
+#if NVCC_ON
+__host__ __device__
+#endif
+inline float3 BigArcIntersectPoint(float3 p1, float3 p2, float3 q1, float3 q2)
+{
+    float A = p1.y*p2.z-p1.z*p2.y;
+    float B = p1.z*p2.x-p1.x*p2.z;
+    float C1 = p1.x*p2.y-p1.y*p2.x;
+    float D = q1.y*q2.z-q1.z*q2.y;
+    float E = q1.z*q2.x-q1.x*q2.z;
+    float F = q1.x*q2.y-q1.y*q2.x;
+
+    float BF_CE = B*F - C1 * E;
+    float AE_BD = A*E - B*D;
+    float AF_CD = A*F - C1 * D;
+    float BD_AE = B*D - A*E;
+
+    float3 L = make_float3(BF_CE / AE_BD, AF_CD/ BD_AE, 1.0f);
+    return normalize(L);
+}
+
+#if NVCC_ON
+__host__ __device__
+#endif
+inline bool onSegment(float3 p1, float3 p2, float3 q1, float3 q2, float3 p1_p2, float3 q1_q2, float3 &p)
+{
+
+    float3 p1_p = cross(p1, p);
+    float3 p_p2 = cross(p, p2);
+
+
+    float3 q1_p = cross(q1, p);
+    float3 p_q2 = cross(p, q2);
+
+
+    float d1 = dot(p1_p, p_p2);
+    float d2 = dot(p_p2, p1_p2);
+    float d3 = dot(q1_p, p_q2);
+    float d4 = dot(p_q2, q1_q2);
+
+    return (d1 > EPS3) &&  (d2 > EPS3)
+            && (d3 > EPS3) && (d4 > EPS3);
+}
+
+#if NVCC_ON
+__host__ __device__
+#endif
+inline bool IntersectCore(float3 p1, float3 p2, float3 q1, float3 q2, float3 &p)// &p = make_float3(0,0,0))
+{
+    //http://mathforum.org/library/drmath/view/62205.html
+
+    float A = p1.y*p2.z-p1.z*p2.y;
+    float B = p1.z*p2.x-p1.x*p2.z;
+    float C1 = p1.x*p2.y-p1.y*p2.x;
+    float D = q1.y*q2.z-q1.z*q2.y;
+    float E = q1.z*q2.x-q1.x*q2.z;
+    float F = q1.x*q2.y-q1.y*q2.x;
+
+    float BF_CE = B*F - C1 * E;
+    float AE_BD = A*E - B*D;
+    float AF_CD = A*F - C1 * D;
+    float BD_AE = -AE_BD;
+
+    float3 p1_p2 =  make_float3(A, B, C1);
+    float3 q1_q2 = make_float3(D, E, F);
+	p =  make_float3(-BF_CE  , AF_CD , -AE_BD);
+	
+    float len = length(p);
+
+	if(len < EPS3)
+		return false;
+
+    p = p / len;
+
+	if(onSegment(p1, p2, q1, q2, p1_p2, q1_q2, p))
+        return true;
+    p =  -p;
+    if(onSegment(p1, p2, q1, q2, p1_p2, q1_q2, p))
+        return true;
+    return false;
+}
+
+#if NVCC_ON
+__host__ __device__
+#endif
+inline bool BIntersect(float3 p1, float3 p2, float3 q1, float3 q2)//, float3 &p = make_float3(0,0,0))
+{
+    float3 p;
+    return IntersectCore(p1, p2, q1, q2, p);
+
+}
+
+#if NVCC_ON
+__host__ __device__
+#endif
+inline void Intersect(float3 p1, float3 p2, float3 q1, float3 q2,
+    pt3 &pi)
+{
+    float3 interPt;
+    bool bInter = IntersectCore(p1, p2, q1, q2, interPt);
+    if(bInter)
+    {
+        pi.coord = interPt;
+        pi.loc = length(p1 - interPt) / length(p2 - p1);
+    }
+    return;
+}
+	/*
+inline bool BIntersect(float3 p1, float3 p2, float3 q1, float3 q2)
+{
+    float3 L = BigArcIntersectPoint(p1, p2, q1, q2);
+    float3 L_opp = -L;
+    return ((on_arc(p1, p2, L) && on_arc(q1, q2, L)) ||
+        (on_arc(p1, p2, L_opp) && on_arc(p1, p2, L_opp) ));
+}
+
+#if NVCC_ON
+__host__ __device__
+#endif
+inline void Intersect(float3 p1, float3 p2, float3 q1, float3 q2,
+    pt3 &pi)
+{
+    float3 L = BigArcIntersectPoint(p1, p2, q1, q2);
+
+    float3 L_opp = -L;
+    if(on_arc(p1, p2, L) && on_arc(q1, q2, L))
+    {
+        pi.coord = L;
+        pi.loc = length(p1 - L) / length(p2 - p1);
+    }
+    else if(on_arc(p1, p2, L_opp) && on_arc(q1, q2, L_opp))
+    {
+        pi.coord = L_opp;
+        pi.loc = length(p1 - L_opp) / length(p2 - p1);
+    }
+    return;
+}
+*/
 
 #if NVCC_ON
 __host__ __device__
@@ -365,7 +512,7 @@ inline void Intersect(float2 p1, float2 p2, float2 q1, float2 q2,
     pi.loc = tp;// dist(p1.x, p1.y, x, y) / dist(p1.x, p1.y, p2.x, p2.y);
     //qi.loc = tq;// dist(q1.x, q1.y, x, y) / dist(q1.x, q1.y, q2.x, q2.y);
 }
-
+/*
 #if NVCC_ON
 __host__ __device__
 #endif
@@ -393,6 +540,8 @@ inline void Intersect(float3 p1, float3 p2, float3 q1, float3 q2,
 	}
 	return;
 }
+*/
+
 //
 //#if NVCC_ON
 //__host__ __device__
@@ -444,6 +593,7 @@ __host__ __device__
 #endif
 inline bool testInside(float3 p, trgl3 t)
 {
+	/*
 	float3 n[3], next, v1, v2;
 	for(int i = 0; i < 3; i++)
 	{
@@ -460,6 +610,23 @@ inline bool testInside(float3 p, trgl3 t)
 			return false;
 	}
 	return true;
+	*/
+	float3 n[3], e[3];
+    float d[3];
+    bool b[3];
+    for(int i = 0; i < 3; i++)
+        n[i] = cross(t.p[(i + 1) % 3].coord ,t.p[(i + 1) % 3].coord - t.p[i].coord);
+
+    for(int i = 0; i < 3; i++)
+    {
+        d[i] = dot(n[i], p);
+        b[i] = d[i] > EPS3;
+    }
+
+    if((b[0] && b[1] && b[2]) || (!b[0] && !b[1] && !b[2]))
+        return true;
+
+    return false;
 }
 
 #if NVCC_ON
@@ -486,9 +653,9 @@ inline void AddIntersection(trgl3 ts, trgl3 tc, pt3 *clipped_array, int &clipped
 					float loc1 = insect_c.loc;
 					float loc2 = clipped_array[clipped_cnt - 1].loc;
 					//this epsilon could not be too large because loc varies in a small range within [0, 1]
-                    if( loc1 - loc2 > EPS2)		
+                    if( loc1 - loc2 > EPS)		
                         clipped_array[clipped_cnt++] = insect_c;
-                    else if(loc2 - loc1 > EPS2)
+                    else if(loc2 - loc1 > EPS)
                     {
                         clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
                         clipped_array[clipped_cnt - 1] = insect_c;
@@ -530,9 +697,9 @@ inline void AddIntersection(trgl ts, trgl tc, pt *clipped_array, int &clipped_cn
 					float loc1 = insect_c.loc;
 					float loc2 = clipped_array[clipped_cnt - 1].loc;
 					//this epsilon could not be too large because loc varies in a small range within [0, 1]
-                    if( loc1 - loc2 > EPS2)		
+                    if( loc1 - loc2 > EPS)		
                         clipped_array[clipped_cnt++] = insect_c;
-                    else if(loc2 - loc1 > EPS2)
+                    else if(loc2 - loc1 > EPS)
                     {
                         clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
                         clipped_array[clipped_cnt - 1] = insect_c;
@@ -572,6 +739,12 @@ inline void printTrgl(trgl t)
 	cout<<"("<<t.p[0].coord.y << ","<< t.p[1].coord.y << "," << t.p[2].coord.y << "," << t.p[0].coord.y<<endl;
 }
 
+inline void printTrgl(triangle t)
+{
+	cout<<" = ["<<t.p[0].x << ","<< t.p[1].x << "," << t.p[2].x << "," << t.p[0].x<<"];"<<endl;
+	cout<<" = ["<<t.p[0].y << ","<< t.p[1].y << "," << t.p[2].y << "," << t.p[0].y<<"];"<<endl;
+}
+
 __host__ void GetResultToHost()
 {
 	cudaError_t error;
@@ -609,13 +782,32 @@ inline void Cart2Geo(float2 &geo, float3 &cart)
 		geo.x = geo.x + 360;
 }
 
+__host__ __device__
+inline void shrink(pt3 *arr, int size)
+{
+	for(int i = 1; i < size; i++)
+		if(arr[i - 1].loc >= (arr[i].loc ))
+			arr[i].loc = -1;
+	if(arr[size - 1].loc == (arr[0].loc + 3))
+		arr[size - 1].loc = -1;
+
+	int cnt = 1;
+	for(int i = 1; i < size; i++)
+	{
+		if(arr[i].loc != -1)
+		{
+			arr[cnt++] = arr[i];
+		}
+	}
+}
+
 #if NVCC_ON
 __host__ __device__
 #endif
-void clip3(triangle *t_s1, triangle *t_c1, pt clipped_array_out[12], int &clipped_cnt, instructSet *stateInstr)
+void clip3(triangle *t_s1, triangle *t_c1, pt clipped_array_out[6], int &clipped_cnt, instructSet *stateInstr)
 {
 	trgl3 ts, tc;
-	pt3 clipped_array[12];
+	pt3 clipped_array[7];
 	Geo2Cart(ts, *t_s1);
 	Geo2Cart(tc, *t_c1);
 	//mark inside or outside for the triangle vertices
@@ -685,6 +877,7 @@ void clip3(triangle *t_s1, triangle *t_c1, pt clipped_array_out[12], int &clippe
 	if(is.doIns[13])
 		clipped_cnt++;
 	if(is.doIns[4])//+s0
+//		if(clipped_array[clipped_cnt - 1].loc < ts.p[0].loc)
 		clipped_array[clipped_cnt++] = ts.p[0];
 	if(is.doIns[5])//+c0
 		clipped_array[clipped_cnt++] = tc.p[0];
@@ -701,22 +894,28 @@ void clip3(triangle *t_s1, triangle *t_c1, pt clipped_array_out[12], int &clippe
 	if(is.doIns[11])//+r0_s0
 		clipped_array[0] = ts.p[0];
 
+//	shrink(clipped_array, clipped_cnt);
 
 	//if number of edge less than 3, then this is not a polygon
 	if(clipped_cnt > 0 && clipped_cnt < 3)
 	{
-	//	printTrgl(ts);
-	//	printTrgl(tc);
-	//	cout<<"state:"<<state<<endl;
-	//	cout<<"clipped_cnt:"<<clipped_cnt<<endl;
+
+	
 		//cout<<"state:"<<state<<endl;
 		//cout<<"clipped_cnt:"<<clipped_cnt<<endl;
 		//cout<<"error:polygon has one or two vertices, impossible case!"<<endl;
 		clipped_cnt = 0;
 	//	exit(1);
 	}
-	//else if(clipped_cnt > 6)
-	//	clipped_cnt = 6;
+	else if(clipped_cnt > 6)
+	{
+		//printTrgl(*t_s1);
+		//printTrgl(*t_c1);
+		//cout<<"state:"<<state<<endl;
+		//cout<<"clipped_cnt:"<<clipped_cnt<<endl;
+		//exit(1);
+		clipped_cnt = 6;
+	}
 
 	for(int i = 0; i < clipped_cnt; i++)
 	{
@@ -855,7 +1054,7 @@ __global__ void clip_kernel(triangle *t_s, triangle *t_c, int2 *pair, int npair,
 
 
 
-	pt clipped_array[12];
+	pt clipped_array[6];
 	int clipped_cnt = 0;
 	//clip(&t_s[pair[idx].x], &t_c[pair[idx].y], clipped_array, clipped_cnt, d_state);
 	clip3(&t_s[pair[idx].x], &t_c[pair[idx].y], clipped_array, clipped_cnt, d_state);
@@ -887,7 +1086,7 @@ vector<float2> clip_serial(triangle t_s, triangle t_c)
     //    tc.p[i].x = t_c.p[i].x;
     //    tc.p[i].y = t_c.p[i].y;
     //}
-	pt clipped_array[12];
+	pt clipped_array[6];
 	int clipped_cnt = 0;
 	//clip(&t_s, &t_c, clipped_array, clipped_cnt, _stateSet);
 	clip3(&t_s, &t_c, clipped_array, clipped_cnt, _stateSet);

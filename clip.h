@@ -8,9 +8,10 @@ using namespace std;
 #define NVCC_ON 1	//using nvcc instead of g++
 
 #define EPS 1E-7
-#define EPS2 1E-6
+//#define EPS2 1E-6
 #define EPS3 1E-14
-#define EPS4 1E-5
+//#define EPS4 1E-5
+//#define EPS5 1E-4
 
 //static int cnt = 0;
 
