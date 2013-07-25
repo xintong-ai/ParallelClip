@@ -8,6 +8,10 @@
 #include <thrust/scan.h>
 #include <thrust/execution_policy.h>
 #include <thrust/device_vector.h>
+#include "vtkUnstructuredGrid.h"
+#include "vtkUnstructuredGridReader.h"
+#include <vtkSmartPointer.h>
+
 //#include <math.h>
 //#include <math_constants.h>
 //#include <math_functions.h>
@@ -26,6 +30,13 @@
 
 #define M_PI_180 0.01745329252f
 #define M_180_PI 57.29577951f
+#define M_PI       3.14159265358979323846
+#define M_PI_4     0.785398163397448309616
+#define M_PI_2     1.57079632679489661923
+
+#define BIN_STEP_X 0.02		//radian
+#define BIN_STEP_Y 0.02		//radian
+
  
 inline void __cudaSafeCall( cudaError err, const char *file, const int line )
 {
@@ -64,6 +75,12 @@ inline __host__ __device__ float3 operator-(float3 a, float3 b)
 inline __host__ __device__ float dot(float2 a, float2 b)
 { 
     return a.x * b.x + a.y * b.y;
+}
+
+
+inline __host__ __device__ float2 operator*(float2 a, float b)
+{
+    return make_float2(a.x * b, a.y * b);
 }
 
 inline __host__ __device__ float dot(float3 a, float3 b)
@@ -328,12 +345,15 @@ inline bool onSegment(float3 p1, float3 p2, float3 q1, float3 q2, float3 p1_p2, 
             && (d3 > EPS3) && (d4 > EPS3);
 }
 
+//
 #if NVCC_ON
 __host__ __device__
 #endif
 inline bool IntersectCore(float3 p1, float3 p2, float3 q1, float3 q2, float3 &p)// &p = make_float3(0,0,0))
 {
     //http://mathforum.org/library/drmath/view/62205.html
+	//http://www.boeing-727.com/Data/fly%20odds/distance.html
+	//  P . (P1 x P2) = 0
 
     float A = p1.y*p2.z-p1.z*p2.y;
     float B = p1.z*p2.x-p1.x*p2.z;
@@ -560,6 +580,14 @@ inline void Intersect(float3 p1, float3 p2, float3 q1, float3 q2,
 //	return p1.x * p2.x + p1.y * p2.y;
 //}
 
+//http://forum.beyond3d.com/archive/index.php/t-48658.html
+//a, b, c = triangle vertices (in clockwise order)
+//x = point on sphere
+//
+//p1 = dot(x, cross(a, a-c))
+//p2 = dot(x, cross(b, b-a))
+//p3 = dot(x, cross(c, c-b))
+
 #if NVCC_ON
 __host__ __device__
 #endif
@@ -592,7 +620,7 @@ inline bool testInside(pt p, trgl t)
 __host__ __device__
 #endif
 inline bool testInside(float3 p, trgl3 t)
-{
+{  
 	/*
 	float3 n[3], next, v1, v2;
 	for(int i = 0; i < 3; i++)
@@ -774,12 +802,41 @@ inline void Geo2Cart(trgl3 &cart, triangle &geo)
 }
 
 __host__ __device__
+inline float3 Geo2Cart(float2 geo)
+{
+	float3 cart;
+	float lon = geo.x * M_PI_180;
+	float lat = geo.y * M_PI_180;
+	cart.x = RADIUS * cos(lat) * cos(lon);
+	cart.y = RADIUS * cos(lat) * sin(lon);
+	cart.z = RADIUS * sin(lat);
+	return cart;
+}
+
+__host__ __device__
+inline float3 GeoRadian2Cart(float2 geo)
+{
+	return make_float3(RADIUS * cos(geo.y) * cos(geo.x), RADIUS * cos(geo.y) * sin(geo.x), RADIUS * sin(geo.y));
+}
+
+__host__ __device__
 inline void Cart2Geo(float2 &geo, float3 &cart)
 {
 	geo.x = atan2(cart.y, cart.x) * M_180_PI;
 	geo.y = asin(cart.z / RADIUS) * M_180_PI;
 	if(geo.x < 0)
 		geo.x = geo.x + 360;
+}
+
+__host__ __device__
+inline float3 Cart2Geo(float2 geo)
+{
+	float3 cart;
+	geo.x = atan2(cart.y, cart.x) * M_180_PI;
+	geo.y = asin(cart.z / RADIUS) * M_180_PI;
+	if(geo.x < 0)
+		geo.x = geo.x + 360;
+	return cart;
 }
 
 __host__ __device__
@@ -1299,6 +1356,7 @@ __host__ void checkArray(T *d_array, int size)
 	}
 }
 
+
 __host__
 void runKernel(float* &points, vtkIdType* &cells, int &nCells, int &nPts, int nBlock)//triangle *t_s, triangle *t_c, int2 *pair, int npair)//, polygon *clipped, int *clipped_n)
 {
@@ -1404,4 +1462,590 @@ void runKernel(float* &points, vtkIdType* &cells, int &nCells, int &nPts, int nB
 
 	points = (float*)h_points;
 	cells = h_cells;
+}
+
+struct remove_z
+{
+	__host__ __device__
+	float2 operator() (thrust::tuple<double, double, double> p)
+	{
+		return make_float2(thrust::get<0>(p), thrust::get<1>(p));
+	}
+};
+
+
+struct quad_to_triangles
+{
+	__host__ __device__
+	thrust::tuple<int, int, int, int, int, int> operator() 
+		(thrust::tuple<vtkIdType, vtkIdType, vtkIdType, vtkIdType, vtkIdType> cellIdx,
+		 thrust::tuple<float, float> coords)
+	{
+		int i0 = thrust::get<1>(cellIdx);
+		int i1 = thrust::get<2>(cellIdx);
+		int i2 = thrust::get<3>(cellIdx);
+		int i3 = thrust::get<4>(cellIdx);
+		return thrust::make_tuple<int, int, int, int, int, int>(i0,i1,i2,i0,i2,i3);
+	}
+};
+
+
+
+typedef thrust::tuple<vtkIdType, vtkIdType, vtkIdType, vtkIdType, vtkIdType> vec5_idtype;
+typedef thrust::tuple<float2, float2, float2, float2, float2, float2> trgl2;//coordinates of two triangles
+typedef thrust::tuple<float2, float2, float2> trgl1;//coordinates of two triangles
+
+struct assign_triangle_coords
+{
+	float2* coords;
+	assign_triangle_coords(float2* _coords)
+	{
+		coords = _coords;
+	}
+
+	template <typename Tuple>
+	__device__ void operator()(Tuple t)
+	{
+		vec5_idtype cellIdx = thrust::get<0>(t);
+		int i0 = thrust::get<1>(cellIdx);
+		int i1 = thrust::get<2>(cellIdx);
+		int i2 = thrust::get<3>(cellIdx);
+		int i3 = thrust::get<4>(cellIdx);
+
+		//compare the distance of diagonal vertices
+		//pick the shorter one to devide the quad
+		//use radius, instead of degree
+		float2 p0 = coords[i0] * M_PI_180;
+		float2 p1 = coords[i1] * M_PI_180;
+		float2 p2 = coords[i2] * M_PI_180;
+		float2 p3 = coords[i3] * M_PI_180;
+
+		float3 p0_cart = GeoRadian2Cart(p0);
+		float3 p1_cart = GeoRadian2Cart(p1);
+		float3 p2_cart = GeoRadian2Cart(p2);
+		float3 p3_cart = GeoRadian2Cart(p3);
+
+		float3 p0_p2 = p2_cart - p0_cart;
+		float3 p1_p3 = p3_cart - p1_cart;
+
+		trgl2 twoTrgls;
+		if(dot(p0_p2, p0_p2) < dot(p1_p3, p1_p3))
+		{
+			get<0>(twoTrgls) = p0;
+			get<1>(twoTrgls) = p1;
+			get<2>(twoTrgls) = p2;
+			get<3>(twoTrgls) = p0;
+			get<4>(twoTrgls) = p2;
+			get<5>(twoTrgls) = p3;
+		}
+		else
+		{
+			get<0>(twoTrgls) = p0;
+			get<1>(twoTrgls) = p1;
+			get<2>(twoTrgls) = p3;
+			get<3>(twoTrgls) = p1;
+			get<4>(twoTrgls) = p2;
+			get<5>(twoTrgls) = p3;
+		}
+		thrust::get<1>(t) = twoTrgls;
+	}
+	
+};
+
+
+__device__ inline bool Side0(float radianAngle)
+{
+	if(radianAngle >= (M_PI_4 * 7) || radianAngle < M_PI_4)
+		return true;
+	return false;
+}
+
+__device__ inline bool Side1(float radianAngle)
+{
+	if(radianAngle >= (M_PI_4) && radianAngle < (M_PI_4 * 3))
+		return true;
+	return false;
+}
+
+__device__ inline bool Side2(float radianAngle)
+{
+	if(radianAngle >= (M_PI_4 * 3) && radianAngle < (M_PI_4 * 5))
+		return true;
+	return false;
+}
+
+__device__ inline bool Side3(float radianAngle)
+{
+	if(radianAngle >= (M_PI_4 * 5) && radianAngle < (M_PI_4 * 7))
+		return true;
+	return false;
+}
+
+
+__device__ int GetFace(float3 axisAngle)
+{
+	float2 localCoords;
+	if(Side1(axisAngle.y) && Side0(axisAngle.z))
+		return 0;
+	if(Side3(axisAngle.y) && Side2(axisAngle.z))
+		return 1;
+	if(Side1(axisAngle.z) && Side0(axisAngle.x))
+		return 2;
+	if(Side3(axisAngle.z) && Side2(axisAngle.x))
+		return 3;
+	if(Side1(axisAngle.x) && Side0(axisAngle.y))
+		return 4;
+	if(Side3(axisAngle.x) && Side2(axisAngle.y))
+		return 5;
+}
+
+
+__device__ float2 GetLocalCoords(float3 axisAngle, int face)
+{
+	float2 localCoords;
+	switch(face)
+	{
+	case 0://Side1(axisAngle.y) && Side0(axisAngle.z)
+		localCoords = make_float2(axisAngle.y - M_PI_4, axisAngle.z + M_PI_4);
+		break;
+	case 1://Side3(axisAngle.y) && Side2(axisAngle.z)
+		localCoords = make_float2(axisAngle.y - 5 * M_PI_4, axisAngle.z - 3 * M_PI_4);
+		break;
+	case 2://Side1(axisAngle.z) && Side0(axisAngle.x)
+		localCoords = make_float2(axisAngle.z - M_PI_4, axisAngle.x + M_PI_4);
+		break;
+	case 3://Side3(axisAngle.z) && Side2(axisAngle.x)
+		localCoords = make_float2(axisAngle.z - 5 * M_PI_4, axisAngle.x - 3 * M_PI_4);
+		break;
+	case 4://Side1(axisAngle.x) && Side0(axisAngle.y)
+		localCoords = make_float2(axisAngle.x - M_PI_4, axisAngle.y + M_PI_4);
+		break;
+	case 5://Side3(axisAngle.x) && Side2(axisAngle.y)
+		localCoords = make_float2(axisAngle.x - 5 * M_PI_4, axisAngle.y - 3 * M_PI_4);
+		break;
+	}
+	return localCoords;
+}
+
+__device__ int2 GetLocalBin(float2 localCoords)
+{
+	int2 bin;
+	int nBinX = ceil((float)M_PI_2 / BIN_STEP_X);
+	int nBinY = ceil((float)M_PI_2 / BIN_STEP_Y);
+
+	if(localCoords.x < 0)
+		bin.x = 0;
+	else if(localCoords.x > M_PI_2)
+		bin.x = nBinX - 1;
+	else
+		bin.x = localCoords.x / BIN_STEP_X;
+
+	if(localCoords.y < 0)
+		bin.y = 0;
+	else if(localCoords.y > M_PI_2)
+		bin.y = nBinY - 1;
+	else
+		bin.y = localCoords.y / BIN_STEP_Y;
+
+	return bin;
+}
+
+__device__ 
+
+struct functor_getAxisAngle
+{
+	__host__ __device__
+	float3 operator() (float2 p)
+	{
+		//the angle is in [0, 2*PI]
+		float3 axisAngle;
+		axisAngle.z = p.x;
+		
+		float3 cart = GeoRadian2Cart(p);
+
+		axisAngle.x = atan2(cart.z, cart.y);
+		if(axisAngle.x < 0)
+			axisAngle.x += (2 * M_PI);
+
+		axisAngle.y = atan2(cart.x, cart.z);
+		if(axisAngle.y < 0)
+			axisAngle.y += (2 * M_PI);
+
+		//axisAngle.z = atan2(cart.y, cart.x);
+		//if(axisAngle.z < 0)
+		//	axisAngle.z += (2 * M_PI);
+
+		return axisAngle;
+	}
+};
+
+typedef thrust::tuple<float3, float3, float3> TrglAxisAngle;
+
+__device__ int GetNumBin(TrglAxisAngle t, int face)
+{
+	int2 bin0 = GetLocalBin(GetLocalCoords(thrust::get<0>(t), face));
+	int2 bin1 = GetLocalBin(GetLocalCoords(thrust::get<1>(t), face));
+	int2 bin2 = GetLocalBin(GetLocalCoords(thrust::get<2>(t), face));
+
+	int2 min;
+	int2 max;
+
+	min.x = min3(bin0.x, bin1.x, bin2.x);
+	min.y = min3(bin0.y, bin1.y, bin2.y);
+	max.x = max3(bin0.x, bin1.x, bin2.x);
+	max.y = max3(bin0.y, bin1.y, bin2.y);
+
+	return (max.x - min.x + 1) * (max.y - min.y + 1);
+}
+
+__device__ int getBin(int face, int ix, int iy)
+{
+	int nBinX = ceil((float)M_PI_2 / BIN_STEP_X);
+	int nBinY = ceil((float)M_PI_2 / BIN_STEP_Y);
+	return (nBinX * nBinY * face + nBinX * iy + ix);
+}
+
+__device__ void GetSearchPair(TrglAxisAngle t, int face, int2* &writeCursor, int trglIdx)
+{
+	int2 bin0 = GetLocalBin(GetLocalCoords(thrust::get<0>(t), face));
+	int2 bin1 = GetLocalBin(GetLocalCoords(thrust::get<1>(t), face));
+	int2 bin2 = GetLocalBin(GetLocalCoords(thrust::get<2>(t), face));
+
+	int2 min;
+	int2 max;
+
+	min.x = min3(bin0.x, bin1.x, bin2.x);
+	min.y = min3(bin0.y, bin1.y, bin2.y);
+	max.x = max3(bin0.x, bin1.x, bin2.x);
+	max.y = max3(bin0.y, bin1.y, bin2.y);
+
+	for(int iy = min.y; iy <= max.y; iy++)
+	{
+		for(int ix = min.x; ix <= max.x; ix++)
+		{
+			//int2(bin index, triangle index)
+			*writeCursor = make_int2(getBin(face, ix, iy), trglIdx);//make_int2(ix,iy);//
+			writeCursor++;
+		}
+	}
+}
+
+struct functor_getNumBin
+{
+	 __device__
+	int operator() (TrglAxisAngle t)
+	{
+		int nBin;
+		float3 v0 = thrust::get<0>(t);
+		float3 v1 = thrust::get<1>(t);
+		float3 v2 = thrust::get<2>(t);
+		int f0 = GetFace(v0);
+		int f1 = GetFace(v1);
+		int f2 = GetFace(v2);
+	//	return f2;// v0.x * 1000;//(abs(f0 - f1) < EPS);//((f0 != f1));//
+
+		if((abs(f0 - f1) < EPS) && (abs(f1 - f2) < EPS)) //three vertices are all in one face
+		{
+			nBin = GetNumBin(t, f0);
+		}
+		else if(abs(f0 - f1) < EPS)	//on two face
+		{
+			nBin = GetNumBin(t, f1) + GetNumBin(t, f2);
+		}
+		else if(abs(f1 - f2) < EPS)	//on two face
+		{
+			nBin = GetNumBin(t, f2) + GetNumBin(t, f0);
+		}
+		else if(abs(f2 - f0) < EPS)	//on two face
+		{
+			nBin = GetNumBin(t, f0) + GetNumBin(t, f1);
+		}
+		else	//on three different faces
+		{
+			nBin = GetNumBin(t, f0) + GetNumBin(t, f1) + GetNumBin(t, f2);
+		}
+		return nBin;
+	}
+};
+
+struct functor_fillSearchStruct
+{
+	int2* searchStruct;
+	functor_fillSearchStruct(int2* _searchStruct)
+	{
+		searchStruct = _searchStruct;
+	}
+
+	__device__ void operator() (thrust::tuple<TrglAxisAngle, int, int> tup)
+	{
+		TrglAxisAngle t = thrust::get<0>(tup);
+		int offset = thrust::get<1>(tup);
+		int trglIdx = thrust::get<2>(tup);
+		int2* writeCursor = searchStruct + offset;
+
+		float3 v0 = thrust::get<0>(t);
+		float3 v1 = thrust::get<1>(t);
+		float3 v2 = thrust::get<2>(t);
+		int f0 = GetFace(v0);
+		int f1 = GetFace(v1);
+		int f2 = GetFace(v2);
+
+		if((abs(f0 - f1) < EPS) && (abs(f1 - f2) < EPS)) //three vertices are all in one face
+		{
+			GetSearchPair(t, f0, writeCursor, trglIdx);
+		}
+		else if(abs(f0 - f1) < EPS)	//on two face
+		{
+			GetSearchPair(t, f1, writeCursor, trglIdx);
+			GetSearchPair(t, f2, writeCursor, trglIdx);
+		}
+		else if(abs(f1 - f2) < EPS)	//on two face
+		{
+			GetSearchPair(t, f2, writeCursor, trglIdx);
+			GetSearchPair(t, f0, writeCursor, trglIdx);
+		}
+		else if(abs(f2 - f0) < EPS)	//on two face
+		{
+			GetSearchPair(t, f0, writeCursor, trglIdx);
+			GetSearchPair(t, f1, writeCursor, trglIdx);
+		}
+		else	//on three different faces
+		{
+			GetSearchPair(t, f0, writeCursor, trglIdx);
+			GetSearchPair(t, f1, writeCursor, trglIdx);
+			GetSearchPair(t, f2, writeCursor, trglIdx);
+		}
+	}
+};
+
+struct BinCmp {
+	__host__ __device__
+	bool operator()(const int2& v1, const int2& v2) {
+		return v1.x < v2.x;
+	}
+};
+
+void GetPairs(vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, thrust::device_vector<int2> &d_vec_searchStruct)//, int &numBins)
+{
+	thrust::tuple<double, double, double>* pointCoords_s = (thrust::tuple<double, double, double>*)vtkPts_s->GetVoidPointer(0);
+	int nPoints = vtkPts_s->GetNumberOfPoints();
+	clock_t t_1 = clock();
+	thrust::device_vector<thrust::tuple<double, double, double>> d_vec_vtkPtsCoords_s
+		(pointCoords_s, pointCoords_s + nPoints);
+	clock_t t0 = clock();
+	unsigned long compute_time = (t0 - t_1) * 1000 / CLOCKS_PER_SEC;
+    cout<<"loading VTK point data:"<< (float)compute_time * 0.001 << "sec" << endl;
+
+	thrust::device_vector<float2> d_vec_vtkPts_s(nPoints);
+	
+	
+	
+	transform(d_vec_vtkPtsCoords_s.begin(), d_vec_vtkPtsCoords_s.end(), d_vec_vtkPts_s.begin(), remove_z());
+	clock_t t1 = clock();
+	compute_time = (t1 - t0) * 1000 / CLOCKS_PER_SEC;
+    cout<<"remove z coordinate:"<< (float)compute_time * 0.001 << "sec" << endl;
+	/**********Cells********/
+	int nCells_s = vtkCls_s->GetNumberOfCells();
+
+	vtkIdType* cellIdx_s = vtkCls_s->GetData()->GetPointer(0);
+	int sizeCellArray_s = vtkCls_s->GetSize();
+
+	//input: point index of quad
+	thrust::device_vector<vtkIdType> d_vec_vtkCls_s(cellIdx_s,
+		cellIdx_s + sizeCellArray_s);
+	//device pointer to one quad indices
+	thrust::device_ptr<vec5_idtype> d_vec_vtkCls_vec5_s = 
+		thrust::device_ptr<vec5_idtype>((vec5_idtype*)raw_pointer_cast( &d_vec_vtkCls_s[0]));
+
+	//output: point index of two triangles
+	thrust::device_vector<trgl2> trglCoords_s(nCells_s);
+
+	//input: points coordinates(globally access)
+	float2* ptsCoords_s = thrust::raw_pointer_cast(d_vec_vtkPts_s.data());
+
+
+	//computing
+	thrust::for_each(thrust::make_zip_iterator(thrust::make_tuple(d_vec_vtkCls_vec5_s, trglCoords_s.begin())), 
+		thrust::make_zip_iterator(thrust::make_tuple(d_vec_vtkCls_vec5_s + nCells_s, trglCoords_s.end())), 
+		assign_triangle_coords(ptsCoords_s));
+
+	clock_t t2 = clock();
+    compute_time = (t2 - t1) * 1000 / CLOCKS_PER_SEC;
+    cout<<"time to generate array to put triangle coordinates:"<< (float)compute_time * 0.001 << "sec" << endl;
+
+	//for(int i = 0; i < 4; i++)
+	//{
+	//	trgl2 t2 = trglCoords_s[i];
+	//	cout<< thrust::get<0>(t2).x<<","<<thrust::get<0>(t2).y<<endl;
+	//	cout<< thrust::get<1>(t2).x<<","<<thrust::get<1>(t2).y<<endl;
+	//	cout<< thrust::get<2>(t2).x<<","<<thrust::get<2>(t2).y<<endl;
+	//	cout<< thrust::get<3>(t2).x<<","<<thrust::get<3>(t2).y<<endl;
+	//	cout<< thrust::get<4>(t2).x<<","<<thrust::get<4>(t2).y<<endl;
+	//	cout<< thrust::get<5>(t2).x<<","<<thrust::get<5>(t2).y<<endl;
+	//}
+
+	//input
+	thrust::device_ptr<float2> d_ptr_pointGeoCoords_s = 
+		thrust::device_ptr<float2>((float2*)raw_pointer_cast(&trglCoords_s[0]));
+	//output:
+	//each cell has 2 triangle, each triangle has 3 points
+	int nVertex = nCells_s * 3 * 2;
+	thrust::device_vector<float3> d_vec_pointAxisAngle_s(nVertex);
+
+	//computing
+	thrust::transform(d_ptr_pointGeoCoords_s, d_ptr_pointGeoCoords_s + nVertex, 
+		d_vec_pointAxisAngle_s.begin(), functor_getAxisAngle());
+	clock_t t3 = clock();
+    compute_time = (t3 - t2) * 1000 / CLOCKS_PER_SEC;
+     cout<<"time to compute axis angle:"<< (float)compute_time * 0.001 << "sec" << endl;
+	//cout<<"axis angle:"<<endl;
+	//for(int i = 0; i < 4; i++)
+	//{
+	//	trgl2 t2 = trglCoords_s[i];
+	//	cout<< ((float3)d_vec_pointAxisAngle_s.data()[i]).x<<","
+	//		<<((float3)d_vec_pointAxisAngle_s.data()[i]).y<<","
+	//		<<((float3)d_vec_pointAxisAngle_s.data()[i]).z
+	//		<<endl;
+	//}
+	
+	//output: number of Bins for each triangle
+	int nTrgl = nCells_s * 2;
+	thrust::device_vector<int> d_vec_numBinPerTrgl(nTrgl);
+	//input:
+	thrust::device_ptr<TrglAxisAngle> d_ptr_trglAxisAngle_s
+		((TrglAxisAngle*)raw_pointer_cast(d_vec_pointAxisAngle_s.data())) ;
+
+	//compute the number of bins, each triangle falls in
+	thrust::transform(d_ptr_trglAxisAngle_s, d_ptr_trglAxisAngle_s + nTrgl, 
+		d_vec_numBinPerTrgl.begin(), functor_getNumBin());
+
+	clock_t t4 = clock();
+    compute_time = (t4 - t3) * 1000 / CLOCKS_PER_SEC;
+     cout<<"time to compute the number of bins, each triangle falls in:"<< (float)compute_time * 0.001 << "sec" << endl;
+	//cout<<"nTrgl:"<<nTrgl<<endl;
+	/*cout<<"number of bins:"<<endl;
+	for(int i = 2708; i < 2712; i ++)
+	{
+		cout<<d_vec_numBinPerTrgl[i]<<endl;
+	}*/
+	//input:
+	thrust::device_vector<int> d_vec_searchStructOffset(nTrgl);
+	//compute:
+	thrust::exclusive_scan(thrust::device, d_vec_numBinPerTrgl.begin(), d_vec_numBinPerTrgl.end(), 
+		d_vec_searchStructOffset.begin()); 
+
+		clock_t t5 = clock();
+    compute_time = (t5 - t4) * 1000 / CLOCKS_PER_SEC;
+     cout<<"time to do scan for offset:"<< (float)compute_time * 0.001 << "sec" << endl;
+
+	//cout<<"offset:"<<endl;
+	//for(int i = 0; i < 32; i++)
+	//	cout<<d_vec_searchStructOffset[i]<<endl;
+
+	int numBins = d_vec_searchStructOffset.back() + d_vec_numBinPerTrgl.back();
+	//cout<<"d_vec_searchStructOffset[nTrgl - 1]:"<<d_vec_searchStructOffset[nTrgl - 1]<<endl;
+	//cout<<"d_vec_numBinPerTrgl[nTrgl - 1]:"<<d_vec_numBinPerTrgl[nTrgl - 1]<<endl;
+	//cout<<"numBins:"<<numBins<<endl;
+
+	//input::triangle index
+	thrust::counting_iterator<int> first(0);
+	thrust::counting_iterator<int> last = first + nTrgl;
+	//output: search structure int2(bin index, triangle index)
+	//thrust::device_vector<int2> d_vec_searchStruct(numBins);
+	d_vec_searchStruct.resize(numBins);
+	int2* d_raw_ptr_searchStruct = raw_pointer_cast(d_vec_searchStruct.data());
+	//compute search structure:
+	thrust::for_each(thrust::make_zip_iterator(thrust::make_tuple(d_ptr_trglAxisAngle_s, d_vec_searchStructOffset.begin(),first)),
+		thrust::make_zip_iterator(thrust::make_tuple(d_ptr_trglAxisAngle_s + nTrgl, d_vec_searchStructOffset.end(), last)), 
+		functor_fillSearchStruct(d_raw_ptr_searchStruct));
+
+		clock_t t6 = clock();
+    compute_time = (t6 - t5) * 1000 / CLOCKS_PER_SEC;
+     cout<<"time to input bins for each triangle:"<< (float)compute_time * 0.001 << "sec" << endl;
+
+	thrust::device_ptr<int2> d_ptr_searchStruct(d_raw_ptr_searchStruct);
+
+
+	//for(int i = 3500; i < numBins; i++)
+	//{
+	//	int2 temp = d_ptr_searchStruct[i];
+
+	//	cout<<temp.x <<","<<temp.y<<endl;
+	//	if(temp.x == 0)
+	//		exit(1);
+	//}
+
+	
+
+	//sort based on bin number
+	thrust::sort(d_ptr_searchStruct, d_ptr_searchStruct + numBins, BinCmp());
+	//for(int i = 0; i < 500; i++)
+	//{
+	//	int2 temp = d_ptr_searchStruct[i];
+	//	cout<<temp.x <<","<<temp.y<<endl;
+	//}
+		clock_t t7 = clock();
+	compute_time = (t7 - t6) * 1000 / CLOCKS_PER_SEC;
+     cout<<"time to sort based on bin number:"<< (float)compute_time * 0.001 << "sec" << endl;
+
+//	return d_vec_searchStruct;
+//	searchStruct = d_ptr_searchStruct;
+}
+
+
+__host__ void runCUDA(/*vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, vtkPoints* vtkPts_c, vtkCellArray* vtkCls_c,*/
+	char* filename_subject, char* filename_constraint)
+{
+	thrust::device_vector<int2> searchStruct_s, searchStruct_c;
+	int numBins_s, numBins_c;
+	
+
+    //clock_t t0 = clock();
+	vtkSmartPointer<vtkUnstructuredGridReader> reader =
+      vtkSmartPointer<vtkUnstructuredGridReader>::New();
+	vtkSmartPointer<vtkUnstructuredGridReader> reader_c =
+      vtkSmartPointer<vtkUnstructuredGridReader>::New();
+
+	//reading subject file
+    reader->SetFileName(filename_subject);
+    reader->Update();
+    vtkUnstructuredGrid* grid_s = reader->GetOutput();
+    vtkPoints* points_s = grid_s->GetPoints();
+    vtkCellArray* cell_s = grid_s->GetCells();
+    //reader->CloseVTKFile();
+
+
+	//reading constriant file
+	reader_c->SetFileName(filename_constraint);
+    reader_c->Update(); // Needed because of GetScalarRange
+    vtkUnstructuredGrid* grid_c = reader_c->GetOutput();
+    vtkPoints* points_c = grid_c->GetPoints();
+    vtkCellArray* cell_c = grid_c->GetCells();
+   // reader->CloseVTKFile();
+	
+	
+	GetPairs(points_s, cell_s, searchStruct_s);//, numBins_s);
+	GetPairs(points_c, cell_c, searchStruct_c);//, numBins_c);
+	
+	cout<<"numBins_s:"<<searchStruct_s.size()<<endl;
+	cout<<"numBins_c:"<<searchStruct_c.size()<<endl;
+
+	
+	/*clock_t t1 = clock();
+    unsigned long compute_time = (t1 - t0) * 1000 / CLOCKS_PER_SEC;
+    cout<<"time to get pair <bin number, triangle number>:"<< (float)compute_time * 0.001 << "sec" << endl;
+*/
+	/*cout<<"pair_s:"<<endl;
+	for(int i = 0; i < 50; i++)
+	{
+		int2 temp = searchStruct_s[i];
+		cout<<temp.x <<","<<temp.y<<endl;
+	}
+
+	cout<<"pair_c:"<<endl;
+	for(int i = 0; i < 50; i++)
+	{
+		int2 temp = searchStruct_c[i];
+		cout<<temp.x <<","<<temp.y<<endl;
+	}*/
 }

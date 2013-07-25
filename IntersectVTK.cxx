@@ -9,8 +9,8 @@
 #include <cmath>
 #include <vtkFloatArray.h>
 
-#define PARALLEL_ON 0
-
+#define PARALLEL_ON 1
+ 
 #include "clip.h"
 
 using namespace std;
@@ -513,29 +513,37 @@ int main( int argc, char *argv[] )
 
     vector<triangle> trias_c;
     vector<triangle> trias_s;
-    vtkSmartPointer<vtkUnstructuredGridReader> reader =
-      vtkSmartPointer<vtkUnstructuredGridReader>::New();
+    
+
     /************constraint polygon****************/
+	vtkSmartPointer<vtkUnstructuredGridReader> reader =
+      vtkSmartPointer<vtkUnstructuredGridReader>::New();
+
     reader->SetFileName(filename_constraint);
     reader->Update(); // Needed because of GetScalarRange
     vtkUnstructuredGrid* grid_c = reader->GetOutput();
     vtkPoints* points_c = grid_c->GetPoints();
     vtkCellArray* cell_c = grid_c->GetCells();
     cout<<"nc="<<cell_c->GetNumberOfCells()<<endl;
-    reader->CloseVTKFile();
+    //reader->CloseVTKFile();
 
     ImportTriangles(points_c, cell_c, trias_c);
     /************subject polygon****************/
 
-    reader->SetFileName(filename_subject);
-    reader->Update();
-    vtkUnstructuredGrid* grid_s = reader->GetOutput();
+	vtkSmartPointer<vtkUnstructuredGridReader> reader2 =
+      vtkSmartPointer<vtkUnstructuredGridReader>::New();
+    reader2->SetFileName(filename_subject);
+    reader2->Update();
+    vtkUnstructuredGrid* grid_s = reader2->GetOutput();
     vtkPoints* points_s = grid_s->GetPoints();
     vtkCellArray* cell_s = grid_s->GetCells();
+//	reader2->CloseVTKFile();
     clock_t t1 = clock();
 
 
     ImportTriangles(points_s, cell_s, trias_s);
+
+	//GetPairs(points_s, cell_s, points_c, cell_c);
 
 	if(argc > 1)
 		_nBlock = strtol(argv[1], NULL, 10);
@@ -549,6 +557,10 @@ int main( int argc, char *argv[] )
     clock_t t2 = clock();
     vector<vector<int> > cellsInBin = Binning(trias_c);
     //vector<vector<point> > clippedPoly = 
+	//runCUDA(points_s, cell_s, points_c, cell_c);
+	runCUDA(filename_subject, filename_constraint);
+	return 2;
+
 	clipSets(trias_s, trias_c, cellsInBin);
 
     clock_t t3 = clock();

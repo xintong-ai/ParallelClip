@@ -3,6 +3,8 @@
 
 #include <vector>
 #include <vtkType.h>
+#include "vtkUnstructuredGrid.h"
+#include "vtkCellArray.h"
 using namespace std;
 
 #define NVCC_ON 1	//using nvcc instead of g++
@@ -181,3 +183,9 @@ void finishCUDA();
 __host__
 vector<float2> clip_serial(triangle t_s, triangle t_c);
 
+//__host__
+//void GetPairs(vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, 
+//	vtkPoints* vtkPts_c, vtkCellArray* vtkCls_c);
+
+//__host__ void runCUDA(vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, vtkPoints* vtkPts_c, vtkCellArray* vtkCls_c);
+__host__ void runCUDA(char* filename_subject, char* filename_constraint);
