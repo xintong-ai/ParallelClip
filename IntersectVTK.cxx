@@ -544,11 +544,15 @@ int main( int argc, char *argv[] )
     ImportTriangles(points_s, cell_s, trias_s);
 
 	//GetPairs(points_s, cell_s, points_c, cell_c);
+	float binStep = 0.02;
 
 	if(argc > 1)
 		_nBlock = strtol(argv[1], NULL, 10);
 	else
 		_nBlock = 512;
+
+	if(argc > 2)
+		binStep = ::atof(argv[2]);
 
 #if PARALLEL_ON
     initCUDA();
@@ -558,7 +562,7 @@ int main( int argc, char *argv[] )
     vector<vector<int> > cellsInBin = Binning(trias_c);
     //vector<vector<point> > clippedPoly = 
 	//runCUDA(points_s, cell_s, points_c, cell_c);
-	runCUDA(filename_subject, filename_constraint);
+	runCUDA(filename_subject, filename_constraint, binStep);
 	return 2;
 
 	clipSets(trias_s, trias_c, cellsInBin);

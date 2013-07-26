@@ -34,8 +34,13 @@
 #define M_PI_4     0.785398163397448309616
 #define M_PI_2     1.57079632679489661923
 
-#define BIN_STEP_X 0.02		//radian
-#define BIN_STEP_Y 0.02		//radian
+__constant__ int N_BIN_X;//= 0.02;		
+__constant__ int N_BIN_Y;//= 0.02;		
+__constant__ float BIN_STEP_X;//radian
+__constant__ float BIN_STEP_Y;//radian
+
+int _nBinX;
+int _nBinY;
 
  
 inline void __cudaSafeCall( cudaError err, const char *file, const int line )
@@ -1599,6 +1604,15 @@ __device__ int GetFace(float3 axisAngle)
 		return 5;
 }
 
+__device__ float getLocalCoordsSide0(float v)
+{
+	//for side0 the angle is [7* PI/ 4, 2 * PI) and [0,  PI / 4)
+	if(v <= M_PI_4) //[0,  PI / 4)
+		return v + M_PI_4;
+	else			//[7* PI/ 4, 2 * PI)
+		return v - 7 * M_PI_4;
+
+}
 
 __device__ float2 GetLocalCoords(float3 axisAngle, int face)
 {
@@ -1606,19 +1620,19 @@ __device__ float2 GetLocalCoords(float3 axisAngle, int face)
 	switch(face)
 	{
 	case 0://Side1(axisAngle.y) && Side0(axisAngle.z)
-		localCoords = make_float2(axisAngle.y - M_PI_4, axisAngle.z + M_PI_4);
+		localCoords = make_float2(axisAngle.y - M_PI_4, getLocalCoordsSide0(axisAngle.z));
 		break;
 	case 1://Side3(axisAngle.y) && Side2(axisAngle.z)
 		localCoords = make_float2(axisAngle.y - 5 * M_PI_4, axisAngle.z - 3 * M_PI_4);
 		break;
 	case 2://Side1(axisAngle.z) && Side0(axisAngle.x)
-		localCoords = make_float2(axisAngle.z - M_PI_4, axisAngle.x + M_PI_4);
+		localCoords = make_float2(axisAngle.z - M_PI_4, getLocalCoordsSide0(axisAngle.x));
 		break;
 	case 3://Side3(axisAngle.z) && Side2(axisAngle.x)
 		localCoords = make_float2(axisAngle.z - 5 * M_PI_4, axisAngle.x - 3 * M_PI_4);
 		break;
 	case 4://Side1(axisAngle.x) && Side0(axisAngle.y)
-		localCoords = make_float2(axisAngle.x - M_PI_4, axisAngle.y + M_PI_4);
+		localCoords = make_float2(axisAngle.x - M_PI_4, getLocalCoordsSide0(axisAngle.y));
 		break;
 	case 5://Side3(axisAngle.x) && Side2(axisAngle.y)
 		localCoords = make_float2(axisAngle.x - 5 * M_PI_4, axisAngle.y - 3 * M_PI_4);
@@ -1630,20 +1644,20 @@ __device__ float2 GetLocalCoords(float3 axisAngle, int face)
 __device__ int2 GetLocalBin(float2 localCoords)
 {
 	int2 bin;
-	int nBinX = ceil((float)M_PI_2 / BIN_STEP_X);
-	int nBinY = ceil((float)M_PI_2 / BIN_STEP_Y);
+	//int nBinX = ceil((float)M_PI_2 / BIN_STEP_X);
+	//int nBinY = ceil((float)M_PI_2 / BIN_STEP_Y);
 
 	if(localCoords.x < 0)
 		bin.x = 0;
 	else if(localCoords.x > M_PI_2)
-		bin.x = nBinX - 1;
+		bin.x = N_BIN_X - 1;
 	else
 		bin.x = localCoords.x / BIN_STEP_X;
 
 	if(localCoords.y < 0)
 		bin.y = 0;
 	else if(localCoords.y > M_PI_2)
-		bin.y = nBinY - 1;
+		bin.y = N_BIN_Y - 1;
 	else
 		bin.y = localCoords.y / BIN_STEP_Y;
 
@@ -1700,9 +1714,9 @@ __device__ int GetNumBin(TrglAxisAngle t, int face)
 
 __device__ int getBin(int face, int ix, int iy)
 {
-	int nBinX = ceil((float)M_PI_2 / BIN_STEP_X);
-	int nBinY = ceil((float)M_PI_2 / BIN_STEP_Y);
-	return (nBinX * nBinY * face + nBinX * iy + ix);
+	//int nBinX = ceil((float)M_PI_2 / BIN_STEP_X);
+	//int nBinY = ceil((float)M_PI_2 / BIN_STEP_Y);
+	return (N_BIN_X * N_BIN_Y * face + N_BIN_X * iy + ix);
 }
 
 __device__ void GetSearchPair(TrglAxisAngle t, int face, int2* &writeCursor, int trglIdx)
@@ -1724,7 +1738,7 @@ __device__ void GetSearchPair(TrglAxisAngle t, int face, int2* &writeCursor, int
 		for(int ix = min.x; ix <= max.x; ix++)
 		{
 			//int2(bin index, triangle index)
-			*writeCursor = make_int2(getBin(face, ix, iy), trglIdx);//make_int2(ix,iy);//
+				*writeCursor = make_int2(getBin(face, ix, iy), trglIdx);//make_int2(ix,iy);//
 			writeCursor++;
 		}
 	}
@@ -1765,6 +1779,51 @@ struct functor_getNumBin
 			nBin = GetNumBin(t, f0) + GetNumBin(t, f1) + GetNumBin(t, f2);
 		}
 		return nBin;
+	}
+};
+
+struct functor_getOffset
+{
+	int* offset;
+	int2* searchStruct;
+	functor_getOffset(int2* _searchStruct, int* _offset)
+	{
+		offset = _offset;
+		searchStruct = _searchStruct;
+	}
+
+	__device__ void operator() (int iss)
+	{
+		int ibin = searchStruct[iss].x; //bin index
+		if(ibin != searchStruct[iss - 1].x)
+		{
+			offset[ibin] = iss;
+		}
+	}
+};
+
+struct functor_getNum
+{
+	int* offset;
+	int nBin;
+	functor_getNum(int* _offset, int _nBin)
+	{
+		offset = _offset;
+		nBin = _nBin;
+	}
+
+	template <typename Tuple>
+	__device__ void operator() (Tuple tup)
+	{
+		int ibin = thrust::get<1>(tup);
+		for(int i = (ibin + 1); i < nBin; i++)
+		{
+			if(abs(offset[i] + 1) > EPS)	//offset[i] != -1
+			{
+				thrust::get<0>(tup) = offset[i] - offset[ibin];
+				return;
+			}
+		}
 	}
 };
 
@@ -1825,7 +1884,7 @@ struct BinCmp {
 	}
 };
 
-void GetPairs(vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, thrust::device_vector<int2> &d_vec_searchStruct)//, int &numBins)
+void GetSearchStruct(vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, thrust::device_vector<int2> &d_vec_searchStruct)//, int &numBins)
 {
 	thrust::tuple<double, double, double>* pointCoords_s = (thrust::tuple<double, double, double>*)vtkPts_s->GetVoidPointer(0);
 	int nPoints = vtkPts_s->GetNumberOfPoints();
@@ -1952,6 +2011,7 @@ void GetPairs(vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, thrust::device_vector
 	thrust::counting_iterator<int> last = first + nTrgl;
 	//output: search structure int2(bin index, triangle index)
 	//thrust::device_vector<int2> d_vec_searchStruct(numBins);
+	cout<<"size_search_structure:"<<numBins<<endl;
 	d_vec_searchStruct.resize(numBins);
 	int2* d_raw_ptr_searchStruct = raw_pointer_cast(d_vec_searchStruct.data());
 	//compute search structure:
@@ -1966,24 +2026,25 @@ void GetPairs(vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, thrust::device_vector
 	thrust::device_ptr<int2> d_ptr_searchStruct(d_raw_ptr_searchStruct);
 
 
-	//for(int i = 3500; i < numBins; i++)
+	//for(int i = 0; i < 50/*numBins*/; i++)
 	//{
 	//	int2 temp = d_ptr_searchStruct[i];
 
 	//	cout<<temp.x <<","<<temp.y<<endl;
-	//	if(temp.x == 0)
-	//		exit(1);
+	//	//if(temp.x == 0)
+	//	//	exit(1);
 	//}
 
-	
 
 	//sort based on bin number
 	thrust::sort(d_ptr_searchStruct, d_ptr_searchStruct + numBins, BinCmp());
-	//for(int i = 0; i < 500; i++)
+
+	//for(int i = 0; i < 50; i++)
 	//{
-	//	int2 temp = d_ptr_searchStruct[i];
+	//	int2 temp = d_ptr_searchStruct[numBins - i - 1];
 	//	cout<<temp.x <<","<<temp.y<<endl;
 	//}
+
 		clock_t t7 = clock();
 	compute_time = (t7 - t6) * 1000 / CLOCKS_PER_SEC;
      cout<<"time to sort based on bin number:"<< (float)compute_time * 0.001 << "sec" << endl;
@@ -1992,10 +2053,113 @@ void GetPairs(vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, thrust::device_vector
 //	searchStruct = d_ptr_searchStruct;
 }
 
+void GetOffsetCnt(thrust::device_vector<int2> searchStruct_s, thrust::device_vector<int> &d_vec_offset_s,
+	thrust::device_vector<int> &d_vec_num_s, int nBin)
+{
+	//output: offsets for all bins in [0, nBin -1]
+	/*d_vec_offset_s.resize(nBin);
+	d_vec_offset_s.assign(nBin, -1);*/
+	int* d_raw_ptr_offset_s = thrust::raw_pointer_cast(d_vec_offset_s.data());
+
+	int size_searchStruct_s = searchStruct_s.size();
+
+	//input::index , the first one's offset is zero, it is not computed with CUDA
+	//because it does not have a previous element
+	thrust::counting_iterator<int> first_1(1);
+	thrust::counting_iterator<int> last_s = first_1 + size_searchStruct_s - 1;
+
+	//input::raw pointer for searchStruct
+	int2* d_raw_ptr_searchStruct_s = thrust::raw_pointer_cast(searchStruct_s.data());
+
+	//compute:
+	d_vec_offset_s[0] = 0;
+	thrust::for_each(first_1, last_s,	functor_getOffset(d_raw_ptr_searchStruct_s, d_raw_ptr_offset_s));
+
+	//input:number of triangles in each bin
+	
+
+	thrust::counting_iterator<int> first_0(0);
+	thrust::counting_iterator<int> last_num = first_0 + nBin;
+
+	//compute:
+	thrust::for_each(thrust::make_zip_iterator(thrust::make_tuple(d_vec_num_s.begin(), first_0))
+		, thrust::make_zip_iterator(thrust::make_tuple(d_vec_num_s.end(), last_num)),	
+		functor_getNum(d_raw_ptr_offset_s, nBin));//functor_getNum(int* _offset, int _nBin)
+	d_vec_num_s.back() = size_searchStruct_s - d_vec_offset_s.back();
+	
+}
+
+void GetPairs(thrust::device_vector<int2> searchStruct_s, thrust::device_vector<int2> searchStruct_c,
+	thrust::device_vector<int2> &trglPair)
+{
+	//int nBinX = ceil((float)M_PI_2 / binStepX);
+	//int nBinY = ceil((float)M_PI_2 / binStepY);
+	int nBin = _nBinX * _nBinY * 6;
+	//cout<<"nBinX"<<nBinX<<endl;
+	thrust::device_vector<int> d_vec_offset_s(nBin, -1);
+	thrust::device_vector<int> d_vec_cnt_s(nBin);
+	thrust::device_vector<int> d_vec_offset_c(nBin, -1);
+	thrust::device_vector<int> d_vec_cnt_c(nBin);
+
+	GetOffsetCnt(searchStruct_s, d_vec_offset_s, d_vec_cnt_s, nBin);
+	GetOffsetCnt(searchStruct_c, d_vec_offset_c, d_vec_cnt_c, nBin);
+
+	thrust::device_vector<int> d_vec_cnt_pair(nBin);
+	thrust::transform(d_vec_cnt_s.begin(), d_vec_cnt_s.end(), d_vec_cnt_c.begin(), 
+		d_vec_cnt_pair.begin(), thrust::multiplies<float>());
+
+	//cout<<"for s"<<endl;
+	//for(int i = 0; i < 50; i++)
+	//{
+	//	cout<<d_vec_offset_s[nBin - i - 1]<<","<<d_vec_cnt_s[nBin - i - 1]<<endl;
+	//}
+	
+	//cout<<"for c"<<endl;
+	//for(int i = 0; i < 50; i++)
+	//{
+	//	cout<<d_vec_offset_c[nBin - i - 1]<<","<<d_vec_cnt_c[nBin - i - 1]<<endl;
+	//}
+	//
+	//cout<<"for pair"<<endl;
+	//for(int i = 0; i < 50; i++)
+	//	cout<<d_vec_cnt_pair[i]<<endl;
+	thrust::device_vector<int> d_vec_offset_pair(nBin);
+	thrust::exclusive_scan(thrust::device, d_vec_cnt_pair.begin(), d_vec_cnt_pair.end(), d_vec_offset_pair.begin()); 
+	/*cout<<"for pair offset"<<endl;
+	for(int i = 0; i < 50; i++)
+		cout<<d_vec_offset_pair[i]<<endl;*/
+	int nPair = d_vec_offset_pair.back() + d_vec_cnt_pair.back();
+
+	//trglPair.resize(nPair);
+	cout<<"nPair:"<<nPair<<endl;
+}
+
 
 __host__ void runCUDA(/*vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, vtkPoints* vtkPts_c, vtkCellArray* vtkCls_c,*/
-	char* filename_subject, char* filename_constraint)
+	char* filename_subject, char* filename_constraint, float binStep)
 {
+	//BIN_STEP_X = binStep;
+	//BIN_STEP_Y = binStep;
+
+	//cudaMemcpy(&BIN_STEP_X, &binStep, 1, cudaMemcpyHostToDevice);
+	//cudaMemcpy(&BIN_STEP_Y, &binStep, 1, cudaMemcpyHostToDevice);
+	//binStepX = binStep;
+	//binStepY = binStep;
+	_nBinX = ceil((float)M_PI_2 / binStep);
+	_nBinY = ceil((float)M_PI_2 / binStep);
+	//int nBin = _nBinX * _nBinY * 6;
+
+	cout<<"_nBinX:"<<_nBinX<<endl;
+	cout<<"binStep:"<<binStep<<endl;
+
+	cudaMemcpyToSymbol(BIN_STEP_X, &binStep, sizeof(float));
+	cudaMemcpyToSymbol(BIN_STEP_Y, &binStep, sizeof(float));
+
+	cudaMemcpyToSymbol(N_BIN_X, &_nBinX, sizeof(int));
+	cudaMemcpyToSymbol(N_BIN_Y, &_nBinY, sizeof(int));
+
+	CudaCheckError();
+
 	thrust::device_vector<int2> searchStruct_s, searchStruct_c;
 	int numBins_s, numBins_c;
 	
@@ -2024,28 +2188,34 @@ __host__ void runCUDA(/*vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, vtkPoints* 
    // reader->CloseVTKFile();
 	
 	
-	GetPairs(points_s, cell_s, searchStruct_s);//, numBins_s);
-	GetPairs(points_c, cell_c, searchStruct_c);//, numBins_c);
+	GetSearchStruct(points_s, cell_s, searchStruct_s);//, numBins_s);
+	GetSearchStruct(points_c, cell_c, searchStruct_c);//, numBins_c);
 	
 	cout<<"numBins_s:"<<searchStruct_s.size()<<endl;
 	cout<<"numBins_c:"<<searchStruct_c.size()<<endl;
+
+	//cout<<"pair_s:"<<endl;
+	//for(int i = 0; i < 50; i++)
+	//{
+	//	int2 temp = searchStruct_s[searchStruct_s.size() - i - 1];
+	//	cout<<temp.x <<","<<temp.y<<endl;
+	//}
+
+	//cout<<"pair_c:"<<endl;
+	//for(int i = 0; i < 50; i++)
+	//{
+	//	int2 temp = searchStruct_c[i];
+	//	cout<<temp.x <<","<<temp.y<<endl;
+	//}
+
+
+	thrust::device_vector<int2> trglPair;
+	GetPairs(searchStruct_s, searchStruct_c, trglPair);
 
 	
 	/*clock_t t1 = clock();
     unsigned long compute_time = (t1 - t0) * 1000 / CLOCKS_PER_SEC;
     cout<<"time to get pair <bin number, triangle number>:"<< (float)compute_time * 0.001 << "sec" << endl;
 */
-	/*cout<<"pair_s:"<<endl;
-	for(int i = 0; i < 50; i++)
-	{
-		int2 temp = searchStruct_s[i];
-		cout<<temp.x <<","<<temp.y<<endl;
-	}
 
-	cout<<"pair_c:"<<endl;
-	for(int i = 0; i < 50; i++)
-	{
-		int2 temp = searchStruct_c[i];
-		cout<<temp.x <<","<<temp.y<<endl;
-	}*/
 }
