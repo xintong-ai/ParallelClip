@@ -384,7 +384,7 @@ void clipSets(vector<triangle> t_s, vector<triangle> t_c, vector<vector<int> > c
 	clock_t t1 = clock();
     
 #if PARALLEL_ON
-    loadDataToDevice(&t_s[0].p[0].x, &t_c[0].p[0].x, t_s.size(), &polyPairs[0].is, polyPairs.size());
+//    loadDataToDevice(&t_s[0].p[0].x, &t_c[0].p[0].x, t_s.size(), &polyPairs[0].is, polyPairs.size());
 #endif
 
 	//cout<<"print triangles:"<<endl;
@@ -397,10 +397,11 @@ void clipSets(vector<triangle> t_s, vector<triangle> t_c, vector<vector<int> > c
 	int nCells;
 	int nPts;
 	//cout<<"**0"<<endl;
-
+	/*
 	runKernel(points, cells, nCells, nPts, _nBlock);
-	clock_t t2 = clock();
 	writePolygonFileFastArray("data/CAM_0_small_clipped_parallel.vtk", points, cells, nCells, nPts);
+	*/
+	clock_t t2 = clock();
 #else
 	//cout<<"print triangle s from serial:"<<endl;
 	//printTrgl(t_s[16546]);
@@ -562,10 +563,15 @@ int main( int argc, char *argv[] )
     vector<vector<int> > cellsInBin = Binning(trias_c);
     //vector<vector<point> > clippedPoly = 
 	//runCUDA(points_s, cell_s, points_c, cell_c);
-	runCUDA(filename_subject, filename_constraint, binStep);
+	float* points;
+	vtkIdType* cells;
+	int nCells;
+	int nPts;
+	runCUDA(filename_subject, filename_constraint, binStep, points, cells, nCells, nPts, _nBlock);
+	writePolygonFileFastArray("data/CAM_0_small_clipped_parallel.vtk", points, cells, nCells, nPts);
 	return 2;
 
-	clipSets(trias_s, trias_c, cellsInBin);
+//	clipSets(trias_s, trias_c, cellsInBin);
 
     clock_t t3 = clock();
     unsigned long compute_time = (t3 - t1) * 1000 / CLOCKS_PER_SEC;

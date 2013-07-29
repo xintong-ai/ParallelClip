@@ -169,15 +169,15 @@ inline void CheckError(cudaError_t error)
 	}
 }
 
-float *d_trgl_s;
-float *d_trgl_c;
-int2 *d_pair;
-polygon *d_clipped_vert;
-int *d_clipped_n_vert;
-int _npair;
-instructSet *d_state;
-unsigned int mem_size_clipped_vert;
-unsigned int mem_size_clipped_n_vert;
+//float *d_trgl_s;
+//float *d_trgl_c;
+//int2 *d_pair;
+//polygon *d_clipped_vert;
+//int *d_clipped_n_vert;
+//int _npair;
+//instructSet *d_state;
+//unsigned int mem_size_clipped_vert;
+//unsigned int mem_size_clipped_n_vert;
 
 //#if NVCC_ON 
 //__constant__ instructSet STATE_SET[N_STATE];
@@ -778,18 +778,18 @@ inline void printTrgl(triangle t)
 	cout<<" = ["<<t.p[0].y << ","<< t.p[1].y << "," << t.p[2].y << "," << t.p[0].y<<"];"<<endl;
 }
 
-__host__ void GetResultToHost()
-{
-	cudaError_t error;
-	
-	float *h_clipped_vert = (float*)malloc(mem_size_clipped_vert);
-	error = cudaMemcpy(h_clipped_vert, d_clipped_vert, mem_size_clipped_vert, cudaMemcpyDeviceToHost);
-	CudaSafeCall(error);
-
-	int *h_clipped_n_vert = (int*)malloc(mem_size_clipped_n_vert);
-	error = cudaMemcpy(h_clipped_n_vert, d_clipped_n_vert, mem_size_clipped_n_vert, cudaMemcpyDeviceToHost);
-	CudaSafeCall(error);
-}
+//__host__ void GetResultToHost()
+//{
+//	cudaError_t error;
+//	
+//	float *h_clipped_vert = (float*)malloc(mem_size_clipped_vert);
+//	error = cudaMemcpy(h_clipped_vert, d_clipped_vert, mem_size_clipped_vert, cudaMemcpyDeviceToHost);
+//	CudaSafeCall(error);
+//
+//	int *h_clipped_n_vert = (int*)malloc(mem_size_clipped_n_vert);
+//	error = cudaMemcpy(h_clipped_n_vert, d_clipped_n_vert, mem_size_clipped_n_vert, cudaMemcpyDeviceToHost);
+//	CudaSafeCall(error);
+//}
 
 __host__ __device__
 inline void Geo2Cart(trgl3 &cart, triangle &geo)
@@ -869,7 +869,7 @@ __host__ __device__
 void clip3(triangle *t_s1, triangle *t_c1, pt clipped_array_out[6], int &clipped_cnt, instructSet *stateInstr)
 {
 	trgl3 ts, tc;
-	pt3 clipped_array[7];
+	pt3 clipped_array[12];
 	Geo2Cart(ts, *t_s1);
 	Geo2Cart(tc, *t_c1);
 	//mark inside or outside for the triangle vertices
@@ -1161,15 +1161,15 @@ vector<float2> clip_serial(triangle t_s, triangle t_c)
     return clipped;
 }
 
-__host__ void finishCUDA()
-{
-	cudaFree(d_clipped_n_vert);
-	cudaFree(d_clipped_vert);
-	cudaFree(d_trgl_s);
-	cudaFree(d_trgl_c);
-	cudaFree(d_pair);
-	cudaFree(d_state);
-}
+//__host__ void finishCUDA()
+//{
+//	cudaFree(d_clipped_n_vert);
+//	cudaFree(d_clipped_vert);
+//	cudaFree(d_trgl_s);
+//	cudaFree(d_trgl_c);
+//	cudaFree(d_pair);
+//	cudaFree(d_state);
+//}
 
 __host__ void initCUDA()
 {
@@ -1204,54 +1204,54 @@ __host__ void initCUDA()
 	}
 }
 
-__host__ void loadDataToDevice(float* trgl_s, float* trgl_c, int ntrgl, int *pair, int npair)
-{
-
-
-    cudaError_t error;
-    unsigned int mem_size = ntrgl * 6 * sizeof(float);//3 vertices, each vertex has x and y(2 float)
-
-    error = cudaMalloc((void **) &d_trgl_s, mem_size);
-    CudaSafeCall(error);
-
-    error = cudaMalloc((void **) &d_trgl_c, mem_size);
-    CudaSafeCall(error);
-
-    error = cudaMemcpy(d_trgl_s, trgl_s, mem_size, cudaMemcpyHostToDevice);
-    CudaSafeCall(error);
-
-    error = cudaMemcpy(d_trgl_c, trgl_c, mem_size, cudaMemcpyHostToDevice);
-    CudaSafeCall(error);
-
-    unsigned int mem_size_pair = npair * 2 * sizeof(int);
-
-    error = cudaMalloc((void **) &d_pair, mem_size_pair);
-    CudaSafeCall(error);
-
-    error = cudaMemcpy(d_pair, pair, mem_size_pair, cudaMemcpyHostToDevice);
-    CudaSafeCall(error);
-
-    //6 point * 2 value(x and y)
-    mem_size_clipped_vert = npair * sizeof(polygon);
-
-    error = cudaMalloc((void **) &d_clipped_vert, mem_size_clipped_vert);
-	CudaSafeCall(error);
-
-	mem_size_clipped_n_vert = npair * sizeof(int);
-	error = cudaMalloc((void **) &d_clipped_n_vert, mem_size_clipped_n_vert);
-	CudaSafeCall(error);
-
-	//!!!!!!!!!!!!!!!!!!!!
-	//assign space for stateSet and copy to device memory
-	unsigned int mem_size_state = N_INSTR * N_STATE * sizeof(bool);
-	error = cudaMalloc((void **) &d_state, mem_size_state);
-	error = cudaMemcpy(d_state, _stateSet, mem_size_state, cudaMemcpyHostToDevice);
-    CudaSafeCall(error);
-
-
-	_npair = npair;
-
-}
+//__host__ void loadDataToDevice(float* trgl_s, float* trgl_c, int ntrgl, int *pair, int npair)
+//{
+//
+//
+//    cudaError_t error;
+//    unsigned int mem_size = ntrgl * 6 * sizeof(float);//3 vertices, each vertex has x and y(2 float)
+//
+//    error = cudaMalloc((void **) &d_trgl_s, mem_size);
+//    CudaSafeCall(error);
+//
+//    error = cudaMalloc((void **) &d_trgl_c, mem_size);
+//    CudaSafeCall(error);
+//
+//    error = cudaMemcpy(d_trgl_s, trgl_s, mem_size, cudaMemcpyHostToDevice);
+//    CudaSafeCall(error);
+//
+//    error = cudaMemcpy(d_trgl_c, trgl_c, mem_size, cudaMemcpyHostToDevice);
+//    CudaSafeCall(error);
+//
+//    unsigned int mem_size_pair = npair * 2 * sizeof(int);
+//
+//    error = cudaMalloc((void **) &d_pair, mem_size_pair);
+//    CudaSafeCall(error);
+//
+//    error = cudaMemcpy(d_pair, pair, mem_size_pair, cudaMemcpyHostToDevice);
+//    CudaSafeCall(error);
+//
+//    //6 point * 2 value(x and y)
+//    mem_size_clipped_vert = npair * sizeof(polygon);
+//
+//    error = cudaMalloc((void **) &d_clipped_vert, mem_size_clipped_vert);
+//	CudaSafeCall(error);
+//
+//	mem_size_clipped_n_vert = npair * sizeof(int);
+//	error = cudaMalloc((void **) &d_clipped_n_vert, mem_size_clipped_n_vert);
+//	CudaSafeCall(error);
+//
+//	//!!!!!!!!!!!!!!!!!!!!
+//	//assign space for stateSet and copy to device memory
+//	unsigned int mem_size_state = N_INSTR * N_STATE * sizeof(bool);
+//	error = cudaMalloc((void **) &d_state, mem_size_state);
+//	error = cudaMemcpy(d_state, _stateSet, mem_size_state, cudaMemcpyHostToDevice);
+//    CudaSafeCall(error);
+//
+//
+//	_npair = npair;
+//
+//}
 
 
 __global__ void gen_cells_kernel(vtkIdType* cellArray, int N, int* preSum, int* nVert)
@@ -1363,22 +1363,68 @@ __host__ void checkArray(T *d_array, int size)
 
 
 __host__
-void runKernel(float* &points, vtkIdType* &cells, int &nCells, int &nPts, int nBlock)//triangle *t_s, triangle *t_c, int2 *pair, int npair)//, polygon *clipped, int *clipped_n)
+void runKernel(float* trglCoords_s, float* trglCoords_c, thrust::device_vector<int2> trglPair, float* &points, vtkIdType* &cells, int &nCells, int &nPts, int nBlock)//triangle *t_s, triangle *t_c, int2 *pair, int npair)//, polygon *clipped, int *clipped_n)
 {
+	CudaCheckError();
+	int npair = trglPair.size() / 10;
 	dim3 block(nBlock, 1, 1);
-    dim3 grid(ceil((float)_npair / block.x), 1, 1);
+    dim3 grid(ceil((float)npair / block.x), 1, 1);
 
+	cout<<"grid:"<<grid.x<<","<<grid.y<<","<<grid.z<<endl;
 	
 	//printTriangle((triangle*)d_trgl_s, 16546);
 	//printTriangle((triangle*)d_trgl_c, 88008);
+	int2* d_raw_ptr_trglPair = thrust::raw_pointer_cast(trglPair.data());
+	polygon *d_clipped_vert;
+	int *d_clipped_n_vert;
+	instructSet *d_state;
+
+	unsigned int mem_size_clipped_vert;
+	unsigned int mem_size_clipped_n_vert;
+	mem_size_clipped_vert = npair * sizeof(polygon);
+	mem_size_clipped_n_vert = npair * sizeof(int);
+
+	cout<<"mem_size_clipped_vert:"<<mem_size_clipped_vert<<endl;
+	cout<<"mem_size_clipped_n_vert:"<<mem_size_clipped_n_vert<<endl;
+	
+	cudaError_t error;
+    error = cudaMalloc((void **) &d_clipped_vert, mem_size_clipped_vert);
+	CudaCheckError();
+
+	
+	error = cudaMalloc((void **) &d_clipped_n_vert, mem_size_clipped_n_vert);
+	CudaCheckError();
+
+	//!!!!!!!!!!!!!!!!!!!!
+	//assign space for stateSet and copy to device memory
+	setStateInstr();
+	CudaCheckError();
+
+	unsigned int mem_size_state = N_INSTR * N_STATE * sizeof(bool);
+	error = cudaMalloc((void **) &d_state, mem_size_state);
+	error = cudaMemcpy(d_state, _stateSet, mem_size_state, cudaMemcpyHostToDevice);
+
+	thrust::device_ptr<float> d_ptr_trglCoords_s(trglCoords_s);
+	thrust::device_ptr<float> d_ptr_trglCoords_c(trglCoords_c);
+	thrust::device_ptr<int2> d_ptr_trglPair(d_raw_ptr_trglPair);
+	thrust::device_ptr<bool> d_ptr_state((bool*)d_state);
+	//cout<<"d_ptr_trglCoords_s:"<<endl;
+	//for(int i = 0; i < 20; i++)
+	//{
+	////	cout<<d_ptr_trglCoords_s[i]<<endl;
+	//	//cout<<int2(d_ptr_trglPair[i]).x<<","<<int2(d_ptr_trglPair[i]).y<<endl;
+	//	int tmp = int(d_ptr_state[i]);
+	//	cout <<tmp<<endl;
+	//}
+	CudaCheckError();
+
 	
 	clip_kernel<<<grid, block>>>
-		((triangle*)d_trgl_s, (triangle*)d_trgl_c, 
-		(int2*)d_pair, _npair, 
+		((triangle*)trglCoords_s, (triangle*)trglCoords_c, 
+		d_raw_ptr_trglPair, npair, 
 		d_clipped_vert, d_clipped_n_vert,
 		d_state);
 	CudaCheckError();
-
 
 
 	//printPair(d_pair, _npair, 681046);
@@ -1387,7 +1433,6 @@ void runKernel(float* &points, vtkIdType* &cells, int &nCells, int &nPts, int nB
 
 	//checkArray<int>(d_clipped_n_vert, _npair);
 
-	cudaError_t error;
 
 	int* d_preSum;
     error = cudaMalloc((void **) &d_preSum, mem_size_clipped_n_vert);
@@ -1397,22 +1442,22 @@ void runKernel(float* &points, vtkIdType* &cells, int &nCells, int &nPts, int nB
 	thrust::device_ptr<int> d_ptr_clipped_n_vert(d_clipped_n_vert);
 	//cout<<"num of vert:"<<d_ptr_clipped_n_vert[681046]<<endl;
 	thrust::device_ptr<int> d_ptr_clipped_preSum(d_preSum);
-	thrust::exclusive_scan(thrust::device, d_ptr_clipped_n_vert, d_ptr_clipped_n_vert + _npair, d_ptr_clipped_preSum); 
+	thrust::exclusive_scan(thrust::device, d_ptr_clipped_n_vert, d_ptr_clipped_n_vert + npair, d_ptr_clipped_preSum); 
 
-	nPts = d_ptr_clipped_n_vert[_npair - 1] + d_ptr_clipped_preSum[_npair - 1];
+	nPts = d_ptr_clipped_n_vert[npair - 1] + d_ptr_clipped_preSum[npair - 1];
 	//cout<<"nPts:"<<nPts<<endl;
 	
 	///////////points
 	float3* d_points;
 	unsigned int mem_size_points = nPts * sizeof(float3);
 	error = cudaMalloc((void **) &d_points, mem_size_points);
-	gen_points_kernel<<<grid, block>>>(d_points, d_clipped_vert, d_preSum, d_clipped_n_vert, _npair);
+	gen_points_kernel<<<grid, block>>>(d_points, d_clipped_vert, d_preSum, d_clipped_n_vert, npair);
 
 	float3* h_points = (float3*)malloc(mem_size_points);
 	error = cudaMemcpy(h_points, d_points, mem_size_points, cudaMemcpyDeviceToHost);
 
 	//////cells//////
-	thrust::device_ptr<int> d_ptr_clipped_n_vert_end = thrust::remove(thrust::device, d_ptr_clipped_n_vert, d_ptr_clipped_n_vert + _npair, 0);
+	thrust::device_ptr<int> d_ptr_clipped_n_vert_end = thrust::remove(thrust::device, d_ptr_clipped_n_vert, d_ptr_clipped_n_vert + npair, 0);
 	nCells = d_ptr_clipped_n_vert_end - d_ptr_clipped_n_vert;
 
 	int* d_preSum_compact;
@@ -1459,9 +1504,9 @@ void runKernel(float* &points, vtkIdType* &cells, int &nCells, int &nPts, int nB
 	cudaFree(d_preSum);
 	cudaFree(d_points);
 	
-	cudaFree(d_trgl_s);
-	cudaFree(d_trgl_c);
-	cudaFree(d_pair);
+	//cudaFree(d_trgl_s);
+	//cudaFree(d_trgl_c);
+	//cudaFree(d_pair);
 	cudaFree(d_state);
 	cudaFree(d_preSum_compact);
 
@@ -1558,28 +1603,28 @@ struct assign_triangle_coords
 };
 
 
-__device__ inline bool Side0(float radianAngle)
+__device__ __host__ inline bool Side0(float radianAngle)
 {
 	if(radianAngle >= (M_PI_4 * 7) || radianAngle < M_PI_4)
 		return true;
 	return false;
 }
 
-__device__ inline bool Side1(float radianAngle)
+__device__ __host__ inline bool Side1(float radianAngle)
 {
 	if(radianAngle >= (M_PI_4) && radianAngle < (M_PI_4 * 3))
 		return true;
 	return false;
 }
 
-__device__ inline bool Side2(float radianAngle)
+__device__ __host__ inline bool Side2(float radianAngle)
 {
 	if(radianAngle >= (M_PI_4 * 3) && radianAngle < (M_PI_4 * 5))
 		return true;
 	return false;
 }
 
-__device__ inline bool Side3(float radianAngle)
+__device__ __host__ inline bool Side3(float radianAngle)
 {
 	if(radianAngle >= (M_PI_4 * 5) && radianAngle < (M_PI_4 * 7))
 		return true;
@@ -1587,7 +1632,7 @@ __device__ inline bool Side3(float radianAngle)
 }
 
 
-__device__ int GetFace(float3 axisAngle)
+__device__ __host__ int GetFace(float3 axisAngle)
 {
 	float2 localCoords;
 	if(Side1(axisAngle.y) && Side0(axisAngle.z))
@@ -1604,17 +1649,17 @@ __device__ int GetFace(float3 axisAngle)
 		return 5;
 }
 
-__device__ float getLocalCoordsSide0(float v)
+__device__ __host__ float getLocalCoordsSide0(float v)
 {
 	//for side0 the angle is [7* PI/ 4, 2 * PI) and [0,  PI / 4)
-	if(v <= M_PI_4) //[0,  PI / 4)
+	if(v <= M_PI) //[0,  PI / 4) but sometimes it can be a little bigger than PI/4, so use PI to make it safe
 		return v + M_PI_4;
 	else			//[7* PI/ 4, 2 * PI)
 		return v - 7 * M_PI_4;
 
 }
 
-__device__ float2 GetLocalCoords(float3 axisAngle, int face)
+__device__ __host__ float2 GetLocalCoords(float3 axisAngle, int face)
 {
 	float2 localCoords;
 	switch(face)
@@ -1638,14 +1683,16 @@ __device__ float2 GetLocalCoords(float3 axisAngle, int face)
 		localCoords = make_float2(axisAngle.x - 5 * M_PI_4, axisAngle.y - 3 * M_PI_4);
 		break;
 	}
+	//cout<<"localCoords:"<<localCoords.x<<","<<localCoords.y<<endl;
 	return localCoords;
 }
 
-__device__ int2 GetLocalBin(float2 localCoords)
+__device__ __host__ int2 GetLocalBin(float2 localCoords)
 {
 	int2 bin;
 	//int nBinX = ceil((float)M_PI_2 / BIN_STEP_X);
 	//int nBinY = ceil((float)M_PI_2 / BIN_STEP_Y);
+	//cout<<"localCoords:"<<localCoords.x<<","<<localCoords.y<<endl;
 
 	if(localCoords.x < 0)
 		bin.x = 0;
@@ -1660,6 +1707,7 @@ __device__ int2 GetLocalBin(float2 localCoords)
 		bin.y = N_BIN_Y - 1;
 	else
 		bin.y = localCoords.y / BIN_STEP_Y;
+	//cout<<"bin from GetLocalBin:"<<bin.x<<","<<bin.y<<endl;
 
 	return bin;
 }
@@ -1695,12 +1743,17 @@ struct functor_getAxisAngle
 
 typedef thrust::tuple<float3, float3, float3> TrglAxisAngle;
 
-__device__ int GetNumBin(TrglAxisAngle t, int face)
+__device__ __host__ int GetNumBin(TrglAxisAngle t, int face)
 {
+	//cout<<"get number of bins for face "<<face<<endl;
 	int2 bin0 = GetLocalBin(GetLocalCoords(thrust::get<0>(t), face));
 	int2 bin1 = GetLocalBin(GetLocalCoords(thrust::get<1>(t), face));
 	int2 bin2 = GetLocalBin(GetLocalCoords(thrust::get<2>(t), face));
-
+/*
+	cout<<"bin0:"<<bin0.x<<","<<bin0.y<<endl;
+	cout<<"bin1:"<<bin1.x<<","<<bin1.y<<endl;
+	cout<<"bin2:"<<bin2.x<<","<<bin2.y<<endl;
+*/
 	int2 min;
 	int2 max;
 
@@ -1725,6 +1778,7 @@ __device__ void GetSearchPair(TrglAxisAngle t, int face, int2* &writeCursor, int
 	int2 bin1 = GetLocalBin(GetLocalCoords(thrust::get<1>(t), face));
 	int2 bin2 = GetLocalBin(GetLocalCoords(thrust::get<2>(t), face));
 
+
 	int2 min;
 	int2 max;
 
@@ -1746,7 +1800,7 @@ __device__ void GetSearchPair(TrglAxisAngle t, int face, int2* &writeCursor, int
 
 struct functor_getNumBin
 {
-	 __device__
+	 __device__ __host__
 	int operator() (TrglAxisAngle t)
 	{
 		int nBin;
@@ -1757,25 +1811,32 @@ struct functor_getNumBin
 		int f1 = GetFace(v1);
 		int f2 = GetFace(v2);
 	//	return f2;// v0.x * 1000;//(abs(f0 - f1) < EPS);//((f0 != f1));//
+		//cout<<"faces:"<<f0<<","<<f1<<","<<f2<<endl;
 
 		if((abs(f0 - f1) < EPS) && (abs(f1 - f2) < EPS)) //three vertices are all in one face
 		{
+			//cout<<"condition 0"<<endl;
 			nBin = GetNumBin(t, f0);
 		}
 		else if(abs(f0 - f1) < EPS)	//on two face
 		{
+			//cout<<"condition 1"<<endl;
 			nBin = GetNumBin(t, f1) + GetNumBin(t, f2);
 		}
 		else if(abs(f1 - f2) < EPS)	//on two face
 		{
+			//cout<<"condition 2"<<endl;
 			nBin = GetNumBin(t, f2) + GetNumBin(t, f0);
 		}
 		else if(abs(f2 - f0) < EPS)	//on two face
 		{
+			//cout<<"condition 3"<<endl;
+			//cout<<"two faces:"<<f0<<","<<f1<<endl;
 			nBin = GetNumBin(t, f0) + GetNumBin(t, f1);
 		}
 		else	//on three different faces
 		{
+			//cout<<"condition 4"<<endl;
 			nBin = GetNumBin(t, f0) + GetNumBin(t, f1) + GetNumBin(t, f2);
 		}
 		return nBin;
@@ -1884,7 +1945,58 @@ struct BinCmp {
 	}
 };
 
-void GetSearchStruct(vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, thrust::device_vector<int2> &d_vec_searchStruct)//, int &numBins)
+struct PairCmp {
+	__host__ __device__
+	bool operator() (const int2& v1, const int2& v2) {
+		if(v1.x < v2.x)
+			return true;
+		else if(abs(v1.x - v2.x) < EPS)
+			return v1.y < v2.y;
+		return false;
+	}
+};
+
+struct functor_getPairs
+{
+	int2* trglPair;
+	int2* searchStruct_s;
+	int2* searchStruct_c;
+	functor_getPairs(int2* _trglPair, int2* _searchStruct_s, int2* _searchStruct_c)
+	{
+		trglPair = _trglPair;
+		searchStruct_c = _searchStruct_c;
+		searchStruct_s = _searchStruct_s;
+	}
+	
+	template <typename Tuple>
+	__device__ __host__ void operator () (Tuple t)
+	{
+		int offset_pair = thrust::get<0>(t);
+		if((offset_pair + 1) < EPS) //if offset_pair = -1
+			return;
+
+		int offset_s = thrust::get<1>(t);
+		int cnt_s = thrust::get<2>(t);
+		int offset_c = thrust::get<3>(t);
+		int cnt_c = thrust::get<4>(t);
+		
+
+		int cnt = 0;
+		for(int is = 0; is < cnt_s; is++)
+		{
+			for(int ic = 0; ic < cnt_c; ic++)
+			{
+				int loc_s = offset_s + is;
+				int loc_c = offset_c + ic;
+
+				trglPair[offset_pair + cnt] = make_int2(searchStruct_s[loc_s].y, searchStruct_c[loc_c].y);
+				cnt++;
+			}
+		}
+	}
+};
+
+void GetSearchStruct(thrust::device_vector<trgl2> &trglCoords_s, vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, thrust::device_vector<int2> &d_vec_searchStruct)//, int &numBins)
 {
 	thrust::tuple<double, double, double>* pointCoords_s = (thrust::tuple<double, double, double>*)vtkPts_s->GetVoidPointer(0);
 	int nPoints = vtkPts_s->GetNumberOfPoints();
@@ -1895,6 +2007,7 @@ void GetSearchStruct(vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, thrust::device
 	unsigned long compute_time = (t0 - t_1) * 1000 / CLOCKS_PER_SEC;
     cout<<"loading VTK point data:"<< (float)compute_time * 0.001 << "sec" << endl;
 
+	/*****remove the z coordinates*****/
 	thrust::device_vector<float2> d_vec_vtkPts_s(nPoints);
 	
 	
@@ -1903,7 +2016,8 @@ void GetSearchStruct(vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, thrust::device
 	clock_t t1 = clock();
 	compute_time = (t1 - t0) * 1000 / CLOCKS_PER_SEC;
     cout<<"remove z coordinate:"<< (float)compute_time * 0.001 << "sec" << endl;
-	/**********Cells********/
+	
+	/**********Points index for each Cell********/
 	int nCells_s = vtkCls_s->GetNumberOfCells();
 
 	vtkIdType* cellIdx_s = vtkCls_s->GetData()->GetPointer(0);
@@ -1917,7 +2031,7 @@ void GetSearchStruct(vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, thrust::device
 		thrust::device_ptr<vec5_idtype>((vec5_idtype*)raw_pointer_cast( &d_vec_vtkCls_s[0]));
 
 	//output: point index of two triangles
-	thrust::device_vector<trgl2> trglCoords_s(nCells_s);
+	trglCoords_s.resize(nCells_s);
 
 	//input: points coordinates(globally access)
 	float2* ptsCoords_s = thrust::raw_pointer_cast(d_vec_vtkPts_s.data());
@@ -1942,6 +2056,8 @@ void GetSearchStruct(vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, thrust::device
 	//	cout<< thrust::get<4>(t2).x<<","<<thrust::get<4>(t2).y<<endl;
 	//	cout<< thrust::get<5>(t2).x<<","<<thrust::get<5>(t2).y<<endl;
 	//}
+	
+	/*****compute axis angle*****/
 
 	//input
 	thrust::device_ptr<float2> d_ptr_pointGeoCoords_s = 
@@ -1967,6 +2083,7 @@ void GetSearchStruct(vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, thrust::device
 	//		<<endl;
 	//}
 	
+	/*****compute the number of bins, each triangle falls in*****/
 	//output: number of Bins for each triangle
 	int nTrgl = nCells_s * 2;
 	thrust::device_vector<int> d_vec_numBinPerTrgl(nTrgl);
@@ -1974,19 +2091,41 @@ void GetSearchStruct(vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, thrust::device
 	thrust::device_ptr<TrglAxisAngle> d_ptr_trglAxisAngle_s
 		((TrglAxisAngle*)raw_pointer_cast(d_vec_pointAxisAngle_s.data())) ;
 
+	for(int i = 292; i < 293; i++)
+	{
+		TrglAxisAngle bigTriangle = d_ptr_trglAxisAngle_s[i];
+		float3 p = thrust::get<0>(bigTriangle);
+		//cout<<"0:"<<p.x<<","<<p.y<<","<<p.z<<endl;
+		p = thrust::get<1>(bigTriangle);
+		//cout<<"1:"<<p.x<<","<<p.y<<","<<p.z<<endl;
+		p = thrust::get<2>(bigTriangle);
+		//cout<<"2:"<<p.x<<","<<p.y<<","<<p.z<<endl;
+
+		functor_getNumBin func;
+		int bigTrglNBin = func(bigTriangle);
+		//cout<<"bigTrglNBin:"<<bigTrglNBin<<endl;
+	}
+
 	//compute the number of bins, each triangle falls in
 	thrust::transform(d_ptr_trglAxisAngle_s, d_ptr_trglAxisAngle_s + nTrgl, 
 		d_vec_numBinPerTrgl.begin(), functor_getNumBin());
+
 
 	clock_t t4 = clock();
     compute_time = (t4 - t3) * 1000 / CLOCKS_PER_SEC;
      cout<<"time to compute the number of bins, each triangle falls in:"<< (float)compute_time * 0.001 << "sec" << endl;
 	//cout<<"nTrgl:"<<nTrgl<<endl;
-	/*cout<<"number of bins:"<<endl;
-	for(int i = 2708; i < 2712; i ++)
-	{
-		cout<<d_vec_numBinPerTrgl[i]<<endl;
-	}*/
+	// thrust::sort(d_vec_numBinPerTrgl.begin(), d_vec_numBinPerTrgl.end());
+	//cout<<"number of bins:"<<endl;
+	//for(int i = 0; i < 50; i ++)
+	//{
+	//	cout<<i << ","<<d_vec_numBinPerTrgl[d_vec_numBinPerTrgl.size() - i - 1]<<endl;
+	//	if(d_vec_numBinPerTrgl[i] > 100)
+	//		break;
+	//}
+	//exit(2);
+
+	/*****scan for offset*****/
 	//input:
 	thrust::device_vector<int> d_vec_searchStructOffset(nTrgl);
 	//compute:
@@ -2097,9 +2236,9 @@ void GetPairs(thrust::device_vector<int2> searchStruct_s, thrust::device_vector<
 	int nBin = _nBinX * _nBinY * 6;
 	//cout<<"nBinX"<<nBinX<<endl;
 	thrust::device_vector<int> d_vec_offset_s(nBin, -1);
-	thrust::device_vector<int> d_vec_cnt_s(nBin);
+	thrust::device_vector<int> d_vec_cnt_s(nBin, 0);
 	thrust::device_vector<int> d_vec_offset_c(nBin, -1);
-	thrust::device_vector<int> d_vec_cnt_c(nBin);
+	thrust::device_vector<int> d_vec_cnt_c(nBin, 0);
 
 	GetOffsetCnt(searchStruct_s, d_vec_offset_s, d_vec_cnt_s, nBin);
 	GetOffsetCnt(searchStruct_c, d_vec_offset_c, d_vec_cnt_c, nBin);
@@ -2132,11 +2271,47 @@ void GetPairs(thrust::device_vector<int2> searchStruct_s, thrust::device_vector<
 
 	//trglPair.resize(nPair);
 	cout<<"nPair:"<<nPair<<endl;
+
+	trglPair.resize(nPair);
+	int2* d_raw_ptr_trglPair = thrust::raw_pointer_cast(trglPair.data());
+
+	int2* d_raw_ptr_searchStruct_s = thrust::raw_pointer_cast(searchStruct_s.data());
+	int2* d_raw_ptr_searchStruct_c = thrust::raw_pointer_cast(searchStruct_c.data());
+
+	thrust::for_each(
+		thrust::make_zip_iterator(thrust::make_tuple(d_vec_offset_pair.begin(),
+		d_vec_offset_s.begin(), d_vec_cnt_s.begin(),
+		d_vec_offset_c.begin(), d_vec_cnt_c.begin())),  
+		
+		thrust::make_zip_iterator(thrust::make_tuple(d_vec_offset_pair.end(),
+		d_vec_offset_s.end(), d_vec_cnt_s.end(),
+		d_vec_offset_c.end(), d_vec_cnt_c.end())), 
+		
+		functor_getPairs(d_raw_ptr_trglPair, d_raw_ptr_searchStruct_s, d_raw_ptr_searchStruct_c));
+
+	//for(int i = 0; i < 300; i++)
+	//{
+	//	int2 tmp = trglPair[i];
+	//	cout<<tmp.x<<","<<tmp.y<<endl;
+	//}
+
+	thrust::sort(trglPair.begin(),trglPair.end(), PairCmp());
+
+	for(int i = 0; i < 300; i++)
+	{
+		int2 tmp = trglPair[i];
+		cout<<tmp.x<<","<<tmp.y<<endl;
+	}
+	exit(0);
+	//negtive value exits, must be removed...
+
+	//thrust::uniq
 }
 
 
 __host__ void runCUDA(/*vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, vtkPoints* vtkPts_c, vtkCellArray* vtkCls_c,*/
-	char* filename_subject, char* filename_constraint, float binStep)
+	char* filename_subject, char* filename_constraint, float binStep,
+	float* &points, vtkIdType* &cells, int &nCells, int &nPts, int nBlock)
 {
 	//BIN_STEP_X = binStep;
 	//BIN_STEP_Y = binStep;
@@ -2187,9 +2362,12 @@ __host__ void runCUDA(/*vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, vtkPoints* 
     vtkCellArray* cell_c = grid_c->GetCells();
    // reader->CloseVTKFile();
 	
-	
-	GetSearchStruct(points_s, cell_s, searchStruct_s);//, numBins_s);
-	GetSearchStruct(points_c, cell_c, searchStruct_c);//, numBins_c);
+	thrust::device_vector<trgl2> trglCoords_s;
+	thrust::device_vector<trgl2> trglCoords_c;
+	GetSearchStruct(trglCoords_s, points_s, cell_s, searchStruct_s);//, numBins_s);
+	GetSearchStruct(trglCoords_c, points_c, cell_c, searchStruct_c);//, numBins_c);
+	float* d_raw_ptr_trglCoords_s = (float*)thrust::raw_pointer_cast(trglCoords_s.data());
+	float* d_raw_ptr_trglCoords_c = (float*)thrust::raw_pointer_cast(trglCoords_c.data());
 	
 	cout<<"numBins_s:"<<searchStruct_s.size()<<endl;
 	cout<<"numBins_c:"<<searchStruct_c.size()<<endl;
@@ -2207,12 +2385,16 @@ __host__ void runCUDA(/*vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, vtkPoints* 
 	//	int2 temp = searchStruct_c[i];
 	//	cout<<temp.x <<","<<temp.y<<endl;
 	//}
-
+	//exit(1);
 
 	thrust::device_vector<int2> trglPair;
 	GetPairs(searchStruct_s, searchStruct_c, trglPair);
 
 	
+
+//	runKernel(d_raw_ptr_trglCoords_s, d_raw_ptr_trglCoords_c, trglPair, points, cells, nCells, nPts, nBlock);//the 512 may not always be a good number.
+
+
 	/*clock_t t1 = clock();
     unsigned long compute_time = (t1 - t0) * 1000 / CLOCKS_PER_SEC;
     cout<<"time to get pair <bin number, triangle number>:"<< (float)compute_time * 0.001 << "sec" << endl;

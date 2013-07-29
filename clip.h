@@ -168,11 +168,14 @@ inline T max3(T x1, T x2, T x3)
 
 
 #endif //CLIP_H
+/*
 __host__
 void runKernel(float* &points, vtkIdType* &cells, int &nCells, int &nPts, int nBlock);//triangle *t_s, triangle *t_c, int2 *pair, int npair)//, polygon *clipped, int *clipped_n)
+*/
 
-__host__
-void loadDataToDevice(float* trgl_s, float* trgl_c, int ntrgl, int *pair, int npair);
+//
+//__host__
+//void loadDataToDevice(float* trgl_s, float* trgl_c, int ntrgl, int *pair, int npair);
 
 __host__
 void initCUDA();
@@ -188,4 +191,6 @@ vector<float2> clip_serial(triangle t_s, triangle t_c);
 //	vtkPoints* vtkPts_c, vtkCellArray* vtkCls_c);
 
 //__host__ void runCUDA(vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, vtkPoints* vtkPts_c, vtkCellArray* vtkCls_c);
-__host__ void runCUDA(char* filename_subject, char* filename_constraint, float binStep);
+__host__ void runCUDA(/*vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, vtkPoints* vtkPts_c, vtkCellArray* vtkCls_c,*/
+	char* filename_subject, char* filename_constraint, float binStep,
+	float* &points, vtkIdType* &cells, int &nCells, int &nPts, int nBlock);
