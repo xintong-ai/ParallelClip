@@ -11,6 +11,8 @@
 #include "vtkUnstructuredGrid.h"
 #include "vtkUnstructuredGridReader.h"
 #include <vtkSmartPointer.h>
+#include "thrust/unique.h"
+//#include <thrust/iterator/zip_iterator.h>
 
 //#include <math.h>
 //#include <math_constants.h>
@@ -856,7 +858,7 @@ inline void shrink(pt3 *arr, int size)
 	int cnt = 1;
 	for(int i = 1; i < size; i++)
 	{
-		if(arr[i].loc != -1)
+		if((arr[i].loc  + 1) > EPS)
 		{
 			arr[cnt++] = arr[i];
 		}
@@ -869,7 +871,7 @@ __host__ __device__
 void clip3(triangle *t_s1, triangle *t_c1, pt clipped_array_out[6], int &clipped_cnt, instructSet *stateInstr)
 {
 	trgl3 ts, tc;
-	pt3 clipped_array[12];
+	pt3 clipped_array[7];
 	Geo2Cart(ts, *t_s1);
 	Geo2Cart(tc, *t_c1);
 	//mark inside or outside for the triangle vertices
@@ -1856,7 +1858,7 @@ struct functor_getOffset
 	__device__ void operator() (int iss)
 	{
 		int ibin = searchStruct[iss].x; //bin index
-		if(ibin != searchStruct[iss - 1].x)
+		if(abs(ibin - searchStruct[iss - 1].x) >EPS)
 		{
 			offset[ibin] = iss;
 		}
@@ -1877,6 +1879,11 @@ struct functor_getNum
 	__device__ void operator() (Tuple tup)
 	{
 		int ibin = thrust::get<1>(tup);
+		if(abs(offset[ibin] + 1) < EPS)
+		{
+			//thrust::get<0>(tup) = 0;
+			return;
+		}
 		for(int i = (ibin + 1); i < nBin; i++)
 		{
 			if(abs(offset[i] + 1) > EPS)	//offset[i] != -1
@@ -1956,6 +1963,13 @@ struct PairCmp {
 	}
 };
 
+struct PairEqual {
+	__host__ __device__
+	bool operator() (const int2& v1, const int2& v2) {
+		return (v1.x == v2.x && v1.y == v2.y);
+	}
+};
+
 struct functor_getPairs
 {
 	int2* trglPair;
@@ -1964,8 +1978,8 @@ struct functor_getPairs
 	functor_getPairs(int2* _trglPair, int2* _searchStruct_s, int2* _searchStruct_c)
 	{
 		trglPair = _trglPair;
-		searchStruct_c = _searchStruct_c;
 		searchStruct_s = _searchStruct_s;
+		searchStruct_c = _searchStruct_c;
 	}
 	
 	template <typename Tuple>
@@ -1989,14 +2003,22 @@ struct functor_getPairs
 				int loc_s = offset_s + is;
 				int loc_c = offset_c + ic;
 
-				trglPair[offset_pair + cnt] = make_int2(searchStruct_s[loc_s].y, searchStruct_c[loc_c].y);
+				//trglPair[offset_pair + cnt] = make_int2(searchStruc,t_s[loc_s].y, searchStruct_c[loc_c].y);
+				//if(loc_s >= 0 && loc_s < 235554 && loc_c >= 0 && loc_c < 219911)
+				//if(loc_s >= 0 && loc_s < 150000 && loc_c >= 0 && loc_c < 150000)
+				{
+					trglPair[offset_pair + cnt] = make_int2(searchStruct_s[loc_s].y, searchStruct_c[loc_c].y);
+					//trglPair[offset_pair + cnt].x = searchStruct_s[(int)loc_s].y;
+					//trglPair[offset_pair + cnt].y = searchStruct_c[l(int)oc_c].y;
+				}
 				cnt++;
 			}
 		}
 	}
 };
 
-void GetSearchStruct(thrust::device_vector<trgl2> &trglCoords_s, vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, thrust::device_vector<int2> &d_vec_searchStruct)//, int &numBins)
+void GetSearchStruct(thrust::device_vector<trgl2> &trglCoords_s, vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s,
+	thrust::device_vector<int2> &d_vec_searchStruct, thrust::device_vector<float3> &d_vec_pointAxisAngle_s)//, int &numBins)
 {
 	thrust::tuple<double, double, double>* pointCoords_s = (thrust::tuple<double, double, double>*)vtkPts_s->GetVoidPointer(0);
 	int nPoints = vtkPts_s->GetNumberOfPoints();
@@ -2065,7 +2087,7 @@ void GetSearchStruct(thrust::device_vector<trgl2> &trglCoords_s, vtkPoints* vtkP
 	//output:
 	//each cell has 2 triangle, each triangle has 3 points
 	int nVertex = nCells_s * 3 * 2;
-	thrust::device_vector<float3> d_vec_pointAxisAngle_s(nVertex);
+	d_vec_pointAxisAngle_s.resize(nVertex);
 
 	//computing
 	thrust::transform(d_ptr_pointGeoCoords_s, d_ptr_pointGeoCoords_s + nVertex, 
@@ -2091,20 +2113,20 @@ void GetSearchStruct(thrust::device_vector<trgl2> &trglCoords_s, vtkPoints* vtkP
 	thrust::device_ptr<TrglAxisAngle> d_ptr_trglAxisAngle_s
 		((TrglAxisAngle*)raw_pointer_cast(d_vec_pointAxisAngle_s.data())) ;
 
-	for(int i = 292; i < 293; i++)
-	{
-		TrglAxisAngle bigTriangle = d_ptr_trglAxisAngle_s[i];
-		float3 p = thrust::get<0>(bigTriangle);
-		//cout<<"0:"<<p.x<<","<<p.y<<","<<p.z<<endl;
-		p = thrust::get<1>(bigTriangle);
-		//cout<<"1:"<<p.x<<","<<p.y<<","<<p.z<<endl;
-		p = thrust::get<2>(bigTriangle);
-		//cout<<"2:"<<p.x<<","<<p.y<<","<<p.z<<endl;
+	//for(int i = 292; i < 293; i++)
+	//{
+	//	TrglAxisAngle bigTriangle = d_ptr_trglAxisAngle_s[i];
+	//	float3 p = thrust::get<0>(bigTriangle);
+	//	//cout<<"0:"<<p.x<<","<<p.y<<","<<p.z<<endl;
+	//	p = thrust::get<1>(bigTriangle);
+	//	//cout<<"1:"<<p.x<<","<<p.y<<","<<p.z<<endl;
+	//	p = thrust::get<2>(bigTriangle);
+	//	//cout<<"2:"<<p.x<<","<<p.y<<","<<p.z<<endl;
 
-		functor_getNumBin func;
-		int bigTrglNBin = func(bigTriangle);
-		//cout<<"bigTrglNBin:"<<bigTrglNBin<<endl;
-	}
+	//	functor_getNumBin func;
+	//	int bigTrglNBin = func(bigTriangle);
+	//	//cout<<"bigTrglNBin:"<<bigTrglNBin<<endl;
+	//}
 
 	//compute the number of bins, each triangle falls in
 	thrust::transform(d_ptr_trglAxisAngle_s, d_ptr_trglAxisAngle_s + nTrgl, 
@@ -2228,7 +2250,8 @@ void GetOffsetCnt(thrust::device_vector<int2> searchStruct_s, thrust::device_vec
 	
 }
 
-void GetPairs(thrust::device_vector<int2> searchStruct_s, thrust::device_vector<int2> searchStruct_c,
+void GetPairs(thrust::device_vector<float3> d_vec_pointAxisAngle_s, thrust::device_vector<float3> d_vec_pointAxisAngle_c,
+	thrust::device_vector<int2> searchStruct_s, thrust::device_vector<int2> searchStruct_c,
 	thrust::device_vector<int2> &trglPair)
 {
 	//int nBinX = ceil((float)M_PI_2 / binStepX);
@@ -2242,17 +2265,43 @@ void GetPairs(thrust::device_vector<int2> searchStruct_s, thrust::device_vector<
 
 	GetOffsetCnt(searchStruct_s, d_vec_offset_s, d_vec_cnt_s, nBin);
 	GetOffsetCnt(searchStruct_c, d_vec_offset_c, d_vec_cnt_c, nBin);
-
+/*
+	for(int i = 0; i <20; i++)
+	{
+		int2 tmp = searchStruct_s[i];
+		cout<<tmp.x<<","<<tmp.y<<"**";
+	}
+	cout<<"searchStruct_c:"<<endl;
+	for(int i = 0; i < 20; i++)
+	{
+		int2 tmp = searchStruct_c[i];
+		cout<<tmp.x<<","<<tmp.y<<"**";
+	}*/
 	thrust::device_vector<int> d_vec_cnt_pair(nBin);
 	thrust::transform(d_vec_cnt_s.begin(), d_vec_cnt_s.end(), d_vec_cnt_c.begin(), 
 		d_vec_cnt_pair.begin(), thrust::multiplies<float>());
-
-	//cout<<"for s"<<endl;
-	//for(int i = 0; i < 50; i++)
-	//{
-	//	cout<<d_vec_offset_s[nBin - i - 1]<<","<<d_vec_cnt_s[nBin - i - 1]<<endl;
-	//}
-	
+/*
+	cout<<"for s"<<endl;
+	for(int i = 0; i < 100; i++)
+	{
+		cout<<d_vec_offset_s[i]<<","<<d_vec_cnt_s[i]<<",i:"<<i<<"\t";
+		if(d_vec_offset_s[i] < -1 || d_vec_offset_s[i] > 235553)
+		{
+			cout<<"i = "<<i<<endl;
+			exit(1);
+		}
+	}
+	cout<<"**********"<<endl;
+	for(int i = 0; i < 100; i++)
+	{
+		cout<<d_vec_offset_c[i]<<","<<d_vec_cnt_c[i]<<",i:"<<i<<"\t";
+		if(d_vec_offset_c[i] < -1 || d_vec_offset_c[i] > 219910)
+		{
+			cout<<"i = "<<i<<endl;
+			exit(1);
+		}
+	}
+			exit(1);*/
 	//cout<<"for c"<<endl;
 	//for(int i = 0; i < 50; i++)
 	//{
@@ -2272,11 +2321,50 @@ void GetPairs(thrust::device_vector<int2> searchStruct_s, thrust::device_vector<
 	//trglPair.resize(nPair);
 	cout<<"nPair:"<<nPair<<endl;
 
-	trglPair.resize(nPair);
-	int2* d_raw_ptr_trglPair = thrust::raw_pointer_cast(trglPair.data());
+	trglPair.resize(nPair, make_int2(-1,-1));
+	/*for(int i = 0; i < 300; i++)
+	{
+		int2 tmp = trglPair[i];
+		cout<<tmp.x<<","<<tmp.y<<"**";
+	}*/
+	cout<<endl;
 
+	int2* d_raw_ptr_trglPair = thrust::raw_pointer_cast(trglPair.data());
+	/*cout<<"searchStruct_s.size():"<<searchStruct_s.size()<<endl;
+	cout<<"searchStruct_c.size():"<<searchStruct_c.size()<<endl;
+	*/
 	int2* d_raw_ptr_searchStruct_s = thrust::raw_pointer_cast(searchStruct_s.data());
 	int2* d_raw_ptr_searchStruct_c = thrust::raw_pointer_cast(searchStruct_c.data());
+
+	//cout<<"d_vec_offset_pair:"<<endl;
+	//for(int i = 0; i < 100; i++)
+	//	cout << d_vec_offset_pair[i] <<endl;
+	
+	//cout<<"d_vec_offset_s:"<<endl;
+	//for(int i = 0; i < 100; i++)
+	//	cout << d_vec_offset_s[i] <<endl;
+	//
+	//cout<<"d_vec_cnt_s:"<<endl;
+	//for(int i = 0; i < 100; i++)
+	//	cout << d_vec_cnt_s[i] <<endl;
+
+	//cout<<"d_vec_offset_c:"<<endl;
+	//for(int i = 0; i < 100; i++)
+	//	cout << d_vec_offset_c[i] <<endl;
+
+	//cout<<"d_vec_cnt_c:"<<endl;
+	//for(int i = 0; i < 100; i++)
+	//	cout << d_vec_cnt_c[i] <<endl;
+
+	/*cout<<"searchStruct_s:"<<endl;
+	for(int i = 0; i < 100; i++)
+		cout << int2(searchStruct_s[searchStruct_s.size() - i - 1]).x<<","<< int2(searchStruct_s[searchStruct_s.size() - i - 1]).y <<endl;
+	
+	cout<<"searchStruct_c:"<<endl;
+	for(int i = 0; i < 100; i++)
+		cout << int2(searchStruct_c[i]).x<<","<< int2(searchStruct_c[i]).y <<endl;
+*/
+	CudaCheckError();
 
 	thrust::for_each(
 		thrust::make_zip_iterator(thrust::make_tuple(d_vec_offset_pair.begin(),
@@ -2288,22 +2376,41 @@ void GetPairs(thrust::device_vector<int2> searchStruct_s, thrust::device_vector<
 		d_vec_offset_c.end(), d_vec_cnt_c.end())), 
 		
 		functor_getPairs(d_raw_ptr_trglPair, d_raw_ptr_searchStruct_s, d_raw_ptr_searchStruct_c));
-
-	//for(int i = 0; i < 300; i++)
-	//{
-	//	int2 tmp = trglPair[i];
-	//	cout<<tmp.x<<","<<tmp.y<<endl;
-	//}
-
-	thrust::sort(trglPair.begin(),trglPair.end(), PairCmp());
-
-	for(int i = 0; i < 300; i++)
+	//exit(0);
+	CudaCheckError();
+/*
+	for(int i = 0; i < 500; i++)
 	{
 		int2 tmp = trglPair[i];
-		cout<<tmp.x<<","<<tmp.y<<endl;
+		cout<<tmp.x<<","<<tmp.y<<"**";
 	}
-	exit(0);
-	//negtive value exits, must be removed...
+*/
+	//have to sort, otherwise the thrust::unique() does not remove any thing
+	thrust::sort(trglPair.begin(),trglPair.end(), PairCmp());	
+	//cout<<"old size of:"<<trglPair.end() - trglPair.begin()<<endl;
+	thrust::device_vector<int2>::iterator trglPair_end = thrust::unique(trglPair.begin(), trglPair.end(), PairEqual());
+	//cout<<"new size of:"<<trglPair_end  - trglPair.begin()<<endl;
+	trglPair.resize(trglPair_end  - trglPair.begin());
+
+	thrust::remove_if(trglPair.begin(), trglPair.end(),BoundNoOverlap()); 
+	//int result = thrust::count(trglPair.begin(), trglPair.end(), make_int2(-1,-1));
+	//cout<<"number of (-1,-1):"<<result<<endl;
+
+	//cout<<"after assign pairs:"<<endl;
+	/*for(int i = 0; i < 500; i++)
+	{
+		int2 tmp = trglPair[i];
+		cout<<tmp.x<<","<<tmp.y<<"**";
+	}*/
+
+	//cout<<"reverse:"<<endl;
+	//for(int i = 0; i < 500; i++)
+	//{
+	//	int2 tmp = trglPair[trglPair.size() - i - 1];
+	//	cout<<tmp.x<<","<<tmp.y<<"**";
+	//}
+	////negtive value exits, must be removed...
+	//exit(0);
 
 	//thrust::uniq
 }
@@ -2364,13 +2471,16 @@ __host__ void runCUDA(/*vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, vtkPoints* 
 	
 	thrust::device_vector<trgl2> trglCoords_s;
 	thrust::device_vector<trgl2> trglCoords_c;
-	GetSearchStruct(trglCoords_s, points_s, cell_s, searchStruct_s);//, numBins_s);
-	GetSearchStruct(trglCoords_c, points_c, cell_c, searchStruct_c);//, numBins_c);
+	thrust::device_vector<float3> d_vec_pointAxisAngle_s;
+	thrust::device_vector<float3> d_vec_pointAxisAngle_c;
+	GetSearchStruct(trglCoords_s, points_s, cell_s, searchStruct_s, d_vec_pointAxisAngle_s);//, numBins_s);
+	GetSearchStruct(trglCoords_c, points_c, cell_c, searchStruct_c, d_vec_pointAxisAngle_c);//, numBins_c);
 	float* d_raw_ptr_trglCoords_s = (float*)thrust::raw_pointer_cast(trglCoords_s.data());
 	float* d_raw_ptr_trglCoords_c = (float*)thrust::raw_pointer_cast(trglCoords_c.data());
 	
-	cout<<"numBins_s:"<<searchStruct_s.size()<<endl;
-	cout<<"numBins_c:"<<searchStruct_c.size()<<endl;
+	cout<<"searchStruct_s size:"<<searchStruct_s.size()<<endl;
+	cout<<"searchStruct_c size:"<<searchStruct_c.size()<<endl;
+	//exit(1);
 
 	//cout<<"pair_s:"<<endl;
 	//for(int i = 0; i < 50; i++)
@@ -2388,11 +2498,11 @@ __host__ void runCUDA(/*vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, vtkPoints* 
 	//exit(1);
 
 	thrust::device_vector<int2> trglPair;
-	GetPairs(searchStruct_s, searchStruct_c, trglPair);
+	GetPairs(d_vec_pointAxisAngle_s, d_vec_pointAxisAngle_c, searchStruct_s, searchStruct_c, trglPair);
 
 	
 
-//	runKernel(d_raw_ptr_trglCoords_s, d_raw_ptr_trglCoords_c, trglPair, points, cells, nCells, nPts, nBlock);//the 512 may not always be a good number.
+	runKernel(d_raw_ptr_trglCoords_s, d_raw_ptr_trglCoords_c, trglPair, points, cells, nCells, nPts, nBlock);//the 512 may not always be a good number.
 
 
 	/*clock_t t1 = clock();
