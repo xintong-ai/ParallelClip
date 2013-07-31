@@ -211,8 +211,8 @@ void writePolygonFileFastArray(char* filename, float* points_array, vtkIdType* c
 	//cout<<"cells_array:"<<endl;
 	//for(int i = 0; i < 30; i++)
 	//	cout<<cells_array[nCells + nPts - 1 - i]<<endl;
-	cout<<"nCells:"<<nCells<<endl;
-	cout<<"nPts:"<<nPts<<endl;
+	/*cout<<"nCells:"<<nCells<<endl;
+	cout<<"nPts:"<<nPts<<endl;*/
 	vtkIdTypeArray *cellIdx = vtkIdTypeArray::New();
 
 	//cells
@@ -512,6 +512,36 @@ int main( int argc, char *argv[] )
     char filename_constraint[100] = "data/CAM_1_vec.vtk";//"/home/xtong/data/VTK-LatLon2/CAM_1_vec.vtk";
     char filename_subject[100] = "data/CAM_1_vec_warped_5times.vtk";//"/home/xtong/data/VTK-LatLon2/CAM_1_vec_warped_5times.vtk";
 
+
+	//GetPairs(points_s, cell_s, points_c, cell_c);
+	float binStep = 0.02;
+
+	if(argc > 1)
+		_nBlock = strtol(argv[1], NULL, 10);
+	else
+		_nBlock = 512;
+
+	if(argc > 2)
+		binStep = ::atof(argv[2]);
+
+	clock_t t0 = clock();
+	unsigned long compute_time;
+
+#if PARALLEL_ON
+
+    initCUDA();
+	clock_t t1 = clock();
+	compute_time = (t1 - t0) * 1000 / CLOCKS_PER_SEC;
+
+    cout<<"Time: initiate CUDA:"<< (float)compute_time * 0.001 << "sec" << endl;
+    //vector<vector<point> > clippedPoly = 
+	//runCUDA(points_s, cell_s, points_c, cell_c);
+	float* points;
+	vtkIdType* cells;
+	int nCells;
+	int nPts;
+	runCUDA(filename_subject, filename_constraint, binStep, points, cells, nCells, nPts, _nBlock);
+#else
     vector<triangle> trias_c;
     vector<triangle> trias_s;
     
@@ -539,43 +569,22 @@ int main( int argc, char *argv[] )
     vtkPoints* points_s = grid_s->GetPoints();
     vtkCellArray* cell_s = grid_s->GetCells();
 //	reader2->CloseVTKFile();
-    clock_t t1 = clock();
 
 
     ImportTriangles(points_s, cell_s, trias_s);
-
-	//GetPairs(points_s, cell_s, points_c, cell_c);
-	float binStep = 0.02;
-
-	if(argc > 1)
-		_nBlock = strtol(argv[1], NULL, 10);
-	else
-		_nBlock = 512;
-
-	if(argc > 2)
-		binStep = ::atof(argv[2]);
-
-#if PARALLEL_ON
-    initCUDA();
-#endif
-
-    clock_t t2 = clock();
     vector<vector<int> > cellsInBin = Binning(trias_c);
-    //vector<vector<point> > clippedPoly = 
-	//runCUDA(points_s, cell_s, points_c, cell_c);
-	float* points;
-	vtkIdType* cells;
-	int nCells;
-	int nPts;
-	runCUDA(filename_subject, filename_constraint, binStep, points, cells, nCells, nPts, _nBlock);
-	writePolygonFileFastArray("data/CAM_0_small_clipped_parallel.vtk", points, cells, nCells, nPts);
-	return 2;
-
 //	clipSets(trias_s, trias_c, cellsInBin);
 
+#endif
+    clock_t t2 = clock();
+	compute_time = (t2 - t1) * 1000 / CLOCKS_PER_SEC;
+    cout<<"Entire computing time:"<< (float)compute_time * 0.001 << "sec" << endl;
+
+	writePolygonFileFastArray("data/CAM_0_small_clipped_parallel.vtk", points, cells, nCells, nPts);
+
     clock_t t3 = clock();
-    unsigned long compute_time = (t3 - t1) * 1000 / CLOCKS_PER_SEC;
-    cout<<"computing time:"<< (float)compute_time * 0.001 << "sec" << endl;
+    compute_time = (t3 - t2) * 1000 / CLOCKS_PER_SEC;
+    cout<<"Write file time:"<< (float)compute_time * 0.001 << "sec" << endl;
 
  //   writePolygonFile("data/CAM_0_small_clipped.vtk", clippedPoly);
     return 1;
