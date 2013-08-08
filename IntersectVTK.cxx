@@ -208,11 +208,12 @@ void writePolygonFile(char* filename, vector<vector<float2> > poly)
 
 void writePolygonFileFastArray(char* filename, float* points_array, vtkIdType* cells_array, int nCells, int nPts)
 {
+	//	cout<<"nCells:"<<nCells<<endl;
+	//cout<<"nPts:"<<nPts<<endl;
 	//cout<<"cells_array:"<<endl;
 	//for(int i = 0; i < 30; i++)
 	//	cout<<cells_array[nCells + nPts - 1 - i]<<endl;
-	/*cout<<"nCells:"<<nCells<<endl;
-	cout<<"nPts:"<<nPts<<endl;*/
+
 	vtkIdTypeArray *cellIdx = vtkIdTypeArray::New();
 
 	//cells
@@ -228,6 +229,8 @@ void writePolygonFileFastArray(char* filename, float* points_array, vtkIdType* c
 	pts->SetDataTypeToFloat();
 	pts->SetData(vtk_pts_array);
 
+	//for(int i = 0; i < 10; i++)
+	//	cout<<pts[i]<<endl;
 	//grid
     vtkSmartPointer<vtkUnstructuredGrid> grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
     grid->SetPoints(pts);
@@ -318,7 +321,8 @@ void writePolygonFileFast(char* filename, vector<vector<float2> > poly)
 }
 
 //clip two set of cellsNoSort
-void clipSets(vector<triangle> t_s, vector<triangle> t_c, vector<vector<int> > cellInBin_c)
+void clipSets(vector<triangle> t_s, vector<triangle> t_c, vector<vector<int> > cellInBin_c, 
+	vector<float> &pts_vec,	vector<vtkIdType> &idx_array,	int &nPts)
 {
 
     setStateInstr();
@@ -395,7 +399,7 @@ void clipSets(vector<triangle> t_s, vector<triangle> t_c, vector<vector<int> > c
 	float* points;
 	vtkIdType* cells;
 	int nCells;
-	int nPts;
+	//int nPts;
 	//cout<<"**0"<<endl;
 	/*
 	runKernel(points, cells, nCells, nPts, _nBlock);
@@ -437,7 +441,26 @@ void clipSets(vector<triangle> t_s, vector<triangle> t_c, vector<vector<int> > c
     }
 
 	clock_t t2 = clock();
-	writePolygonFileFast("data/CAM_0_small_clipped.vtk", clippedAll);
+	/*writePolygonFileFast("data/CAM_0_small_clipped.vtk", clippedAll);*/
+	vtkIdTypeArray *cellIdx = vtkIdTypeArray::New();
+	
+	
+	for(int i = 0; i < clippedAll.size(); i++)
+	{
+		int np = clippedAll[i].size();
+		idx_array.push_back(np);
+		for(int p = 0; p < np; p++, nPts++)
+		{
+			idx_array.push_back(nPts);
+			pts_vec.push_back(clippedAll[i][p].x);
+			pts_vec.push_back(clippedAll[i][p].y);
+			pts_vec.push_back(0);
+		}
+	}
+	//points = &pts_vec[0];
+	//cells = &idx_array[0];
+	//nCells = clippedAll.size();
+	//nPts = nPts;
 #endif
     unsigned long compute_time = (t2 - t1) * 1000 / CLOCKS_PER_SEC;
 	cout<<"Clipping time:"<< (float)compute_time * 0.001 << "sec" << endl;
@@ -527,8 +550,15 @@ int main( int argc, char *argv[] )
 	clock_t t0 = clock();
 	unsigned long compute_time;
 
-#if PARALLEL_ON
+	cout<<"CUDA block size: "<<_nBlock<<endl;
+	cout<<"Size of Bin (radian): "<<binStep<<endl;
 
+
+#if PARALLEL_ON
+	float* points;
+	vtkIdType* cells;
+	int nCells;
+	int nPts;
     initCUDA();
 	clock_t t1 = clock();
 	compute_time = (t1 - t0) * 1000 / CLOCKS_PER_SEC;
@@ -536,12 +566,10 @@ int main( int argc, char *argv[] )
     cout<<"Time: initiate CUDA:"<< (float)compute_time * 0.001 << "sec" << endl;
     //vector<vector<point> > clippedPoly = 
 	//runCUDA(points_s, cell_s, points_c, cell_c);
-	float* points;
-	vtkIdType* cells;
-	int nCells;
-	int nPts;
+
 	runCUDA(filename_subject, filename_constraint, binStep, points, cells, nCells, nPts, _nBlock);
 #else
+	clock_t t1 = clock();
     vector<triangle> trias_c;
     vector<triangle> trias_s;
     
@@ -573,14 +601,23 @@ int main( int argc, char *argv[] )
 
     ImportTriangles(points_s, cell_s, trias_s);
     vector<vector<int> > cellsInBin = Binning(trias_c);
-//	clipSets(trias_s, trias_c, cellsInBin);
+	vector<float> pts_vec;
+	vector<vtkIdType> idx_array;
+	int nPts = 0;
+	clipSets(trias_s, trias_c, cellsInBin, 	pts_vec, idx_array, nPts);
 
 #endif
     clock_t t2 = clock();
 	compute_time = (t2 - t1) * 1000 / CLOCKS_PER_SEC;
     cout<<"Entire computing time:"<< (float)compute_time * 0.001 << "sec" << endl;
 
-	writePolygonFileFastArray("data/CAM_0_small_clipped_parallel.vtk", points, cells, nCells, nPts);
+#if PARALLEL_ON
+	writePolygonFileFastArray("data/clipped_parallel.vtk", points, cells, nCells, nPts);
+#else
+	//cout<<"ncell, npts"<<idx_array.size()<<","<<nPts<<endl;
+	//cout<<"idx_array.size():"<<idx_array.size()<<endl;
+	writePolygonFileFastArray("data/clipped_serial.vtk", &pts_vec[0], &idx_array[0], idx_array.size() - nPts, nPts);
+#endif
 
     clock_t t3 = clock();
     compute_time = (t3 - t2) * 1000 / CLOCKS_PER_SEC;

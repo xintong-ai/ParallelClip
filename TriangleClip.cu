@@ -45,6 +45,7 @@ __constant__ float BIN_STEP_Y;//radian
 int _nBinX;
 int _nBinY;
 
+
  
 inline void __cudaSafeCall( cudaError err, const char *file, const int line )
 {
@@ -169,6 +170,15 @@ inline void CheckError(cudaError_t error)
 	{
 		printf("returned error code %d, line(%d)\n", error, __LINE__);
 		exit(EXIT_FAILURE);
+	}
+}
+
+inline void Degree2Radian(triangle& t)
+{
+	for(int i = 0; i < 3; i++)
+	{
+		t.p[i].x = t.p[i].x * M_PI_180;
+		t.p[i].y = t.p[i].y * M_PI_180;
 	}
 }
 
@@ -647,6 +657,17 @@ inline bool testInside(float3 p, trgl3 t)
 	}
 	return true;
 	*/
+	//http://forum.beyond3d.com/archive/index.php/t-48658.html
+//	On cartesian coordinates, sphere center at origin (0,0,0), points and triangle vertices at surface of unit sphere.
+//
+//a, b, c = triangle vertices (in clockwise order)
+//x = point on sphere
+//
+//p1 = dot(x, cross(a, a-c))
+//p2 = dot(x, cross(b, b-a))
+//p3 = dot(x, cross(c, c-b))
+//
+//If all p1, p2 and p3 are positive, the point is inside the triangle. Otherwise it's outside.
 	float3 n[3], e[3];
     float d[3];
     bool b[3];
@@ -1171,6 +1192,8 @@ vector<float2> clip_serial(triangle t_s, triangle t_c)
 	pt clipped_array[6];
 	int clipped_cnt = 0;
 	//clip(&t_s, &t_c, clipped_array, clipped_cnt, _stateSet);
+	Degree2Radian(t_s);
+	Degree2Radian(t_c);
 	clip3(&t_s, &t_c, clipped_array, clipped_cnt, _stateSet);
 
     for(int i = 0; i < clipped_cnt; i++)
@@ -2335,7 +2358,8 @@ void GetPairs(thrust::device_vector<float3> d_vec_pointAxisAngle_s, thrust::devi
 	//int nBinX = ceil((float)M_PI_2 / binStepX);
 	//int nBinY = ceil((float)M_PI_2 / binStepY);
 	int nBin = _nBinX * _nBinY * 6;
-	//cout<<"nBinX"<<nBinX<<endl;
+
+	//offset is for every bin, even the bin has no triangle.
 	thrust::device_vector<int> d_vec_offset_s(nBin, -1);
 	thrust::device_vector<int> d_vec_cnt_s(nBin, 0);
 	thrust::device_vector<int> d_vec_offset_c(nBin, -1);
@@ -2480,18 +2504,11 @@ void GetPairs(thrust::device_vector<float3> d_vec_pointAxisAngle_s, thrust::devi
 	}
 */
 	//have to sort, otherwise the thrust::unique() does not remove any thing
-	thrust::sort(trglPair.begin(),trglPair.end(), PairCmp());	
-	//cout<<"old size of:"<<trglPair.end() - trglPair.begin()<<endl;
-	thrust::device_vector<int2>::iterator trglPair_end = thrust::unique(trglPair.begin(), trglPair.end(), PairEqual());
-	//cout<<"new size of:"<<trglPair_end  - trglPair.begin()<<endl;
-	trglPair.resize(trglPair_end  - trglPair.begin());
+	thrust::device_vector<int2>::iterator trglPair_end;
 	float3* d_raw_ptr_axisAngle_s = thrust::raw_pointer_cast(d_vec_pointAxisAngle_s.data());
 	float3* d_raw_ptr_axisAngle_c = thrust::raw_pointer_cast(d_vec_pointAxisAngle_c.data());
 
-	clock_t t4 = clock();
-	compute_time = (t4 - t3) * 1000 / CLOCKS_PER_SEC;
-    cout<<"**Time in pairs: remove duplicated pairs:"<< (float)compute_time * 0.001 << "sec" << endl;
-
+	
 	thrust::device_vector<bool> d_vec_rmSten(trglPair.size(), false);
 	thrust::for_each(thrust::make_zip_iterator(thrust::make_tuple(trglPair.begin(), d_vec_rmSten.begin())),
 		thrust::make_zip_iterator(thrust::make_tuple(trglPair.end(), d_vec_rmSten.end())),
@@ -2506,31 +2523,25 @@ void GetPairs(thrust::device_vector<float3> d_vec_pointAxisAngle_s, thrust::devi
 	trglPair_end = thrust::remove_if(trglPair.begin(), trglPair.end(), d_vec_rmSten.begin(), thrust::identity<bool>());
 	trglPair.resize(trglPair_end  - trglPair.begin());
 	
-	clock_t t5 = clock();
-	compute_time = (t5 - t4) * 1000 / CLOCKS_PER_SEC;
+	clock_t t4 = clock();
+	compute_time = (t4 - t3) * 1000 / CLOCKS_PER_SEC;
     cout<<"**Time in pairs: remove no overlap pairs:"<< (float)compute_time * 0.001 << "sec" << endl;
 
-	//cout<<"new size (after bound overlep test) of:"<<trglPair_end  - trglPair.begin()<<endl;
-	//int result = thrust::count(trglPair.begin(), trglPair.end(), make_int2(-1,-1));
-	//cout<<"number of (-1,-1):"<<result<<endl;
 
-	//cout<<"after assign pairs:"<<endl;
-	/*for(int i = 0; i < 500; i++)
-	{
-		int2 tmp = trglPair[i];
-		cout<<tmp.x<<","<<tmp.y<<"**";
-	}*/
+	thrust::sort(trglPair.begin(),trglPair.end(), PairCmp());	
+	//cout<<"old size of:"<<trglPair.end() - trglPair.begin()<<endl;
+	clock_t t5 = clock();
+	compute_time = (t5 - t4) * 1000 / CLOCKS_PER_SEC;
+    cout<<"**Time in pairs: remove duplicated pairs(sort):"<< (float)compute_time * 0.001 << "sec" << endl;
 
-	//cout<<"reverse:"<<endl;
-	//for(int i = 0; i < 500; i++)
-	//{
-	//	int2 tmp = trglPair[trglPair.size() - i - 1];
-	//	cout<<tmp.x<<","<<tmp.y<<"**";
-	//}
-	////negtive value exits, must be removed...
-	//exit(0);
+	trglPair_end = thrust::unique(trglPair.begin(), trglPair.end(), PairEqual());
+	//cout<<"new size of:"<<trglPair_end  - trglPair.begin()<<endl;
+	trglPair.resize(trglPair_end  - trglPair.begin());
 
-	//thrust::uniq
+	clock_t t6 = clock();
+	compute_time = (t6 - t5) * 1000 / CLOCKS_PER_SEC;
+    cout<<"**Time in pairs: remove duplicated pairs(unique):"<< (float)compute_time * 0.001 << "sec" << endl;
+
 }
 
 
