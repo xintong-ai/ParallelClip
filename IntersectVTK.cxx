@@ -8,8 +8,10 @@
 #include "time.h"
 #include <cmath>
 #include <vtkFloatArray.h>
+#include "string"
 
 #define PARALLEL_ON 1
+#define FILE_DIR "/media/User/Dropbox/sandia/ParallelClip-build/data/"
  
 #include "clip.h"
 
@@ -30,6 +32,7 @@ static int rangeY = Y_MAX - Y_MIN;
 static int nbinX = rangeX / STEP_X;
 static int nbinY = rangeY / STEP_Y;
 static int nbin = nbinX * nbinY;
+static clock_t _t0;
 
 int _nBlock;
 
@@ -462,21 +465,22 @@ void clipSets(vector<triangle> t_s, vector<triangle> t_c, vector<vector<int> > c
 	//nCells = clippedAll.size();
 	//nPts = nPts;
 #endif
-    unsigned long compute_time = (t2 - t1) * 1000 / CLOCKS_PER_SEC;
-	cout<<"Clipping time:"<< (float)compute_time * 0.001 << "sec" << endl;
+//    unsigned long compute_time = (t2 - t1) * 1000 / CLOCKS_PER_SEC;
+//	cout<<"Clipping time:"<< (float)compute_time * 0.001 << "sec" << endl;
   //  return clippedAll;
 }
 
 void CheckVTKFiles()
 {
-	char filename1[100] = "data/CAM_0_small_clipped.vtk";//"/home/xtong/data/VTK-LatLon2/CAM_1_vec.vtk";
-    char filename2[100] = "data/CAM_0_small_clipped_parallel.vtk";//"/home/xtong/data/VTK-LatLon2/CAM_1_vec_warped_5times.vtk";
+    string fileDir = FILE_DIR;
+    string filename1 = fileDir.append("CAM_0_small_clipped.vtk");//"/home/xtong/data/VTK-LatLon2/CAM_1_vec.vtk";
+    string filename2 = fileDir.append("CAM_0_small_clipped_parallel.vtk");//"data/CAM_0_small_clipped_parallel.vtk";//"/home/xtong/data/VTK-LatLon2/CAM_1_vec_warped_5times.vtk";
 
 
     vtkSmartPointer<vtkUnstructuredGridReader> reader1 =
       vtkSmartPointer<vtkUnstructuredGridReader>::New();
     /************constraint polygon****************/
-    reader1->SetFileName(filename1);
+    reader1->SetFileName(filename1.c_str());
     reader1->Update(); // Needed because of GetScalarRange
     vtkUnstructuredGrid* grid1 = reader1->GetOutput();
     vtkPoints* points1 = grid1->GetPoints();
@@ -485,7 +489,7 @@ void CheckVTKFiles()
 
 	vtkSmartPointer<vtkUnstructuredGridReader> reader2 =
       vtkSmartPointer<vtkUnstructuredGridReader>::New();
-    reader2->SetFileName(filename2);
+    reader2->SetFileName(filename2.c_str());
     reader2->Update();
     vtkUnstructuredGrid* grid2 = reader2->GetOutput();
     vtkPoints* points2 = grid2->GetPoints();
@@ -524,19 +528,27 @@ void CheckVTKFiles()
 	reader2->CloseVTKFile();
 }
 
+void PrintElapsedTime(char* msg)
+{
+    clock_t t = clock();
+    clock_t compute_time = (t - _t0) * 1000 / CLOCKS_PER_SEC;
+    _t0 = t;
+
+    cout<<"Took "<< (float)compute_time * 0.001 << " sec to "<< msg << endl;
+}
+
 int main( int argc, char *argv[] )
 {
-	//CheckVTKFiles();
-	//cout<<"all are the same!"<<endl;
-	//return 1;
-//	char filename_constraint[100] = "data/CAM_0_small_vec.vtk";//CAM_1_vec.vtk";//"/home/xtong/data/VTK-LatLon2/CAM_1_vec.vtk";
-//    char filename_subject[100] = "data/CAM_0_small_vec_warped_5times.vtk";//CAM_1_vec_warped_5times.vtk";//"/home/xtong/data/VTK-LatLon2/CAM_1_vec_warped_5times.vtk";
+    //CheckVTKFiles();
+    string fileDir = FILE_DIR;
+    string filename_constraint = FILE_DIR;
+    string filename_subject = FILE_DIR;
+    filename_constraint.append("CAM_1_vec.vtk");
+    filename_subject.append("CAM_1_vec_warped_5times.vtk");
 
-    char filename_constraint[100] = "data/CAM_1_vec.vtk";//"/home/xtong/data/VTK-LatLon2/CAM_1_vec.vtk";
-    char filename_subject[100] = "data/CAM_1_vec_warped_5times.vtk";//"/home/xtong/data/VTK-LatLon2/CAM_1_vec_warped_5times.vtk";
+    cout<<"filename_constraint:"<<filename_constraint <<endl;
+    cout<<"filename_subject:"<<filename_subject <<endl;
 
-
-	//GetPairs(points_s, cell_s, points_c, cell_c);
 	float binStep = 0.02;
 
 	if(argc > 1)
@@ -547,8 +559,7 @@ int main( int argc, char *argv[] )
 	if(argc > 2)
 		binStep = ::atof(argv[2]);
 
-	clock_t t0 = clock();
-	unsigned long compute_time;
+    _t0 = clock();
 
 	cout<<"CUDA block size: "<<_nBlock<<endl;
 	cout<<"Size of Bin (radian): "<<binStep<<endl;
@@ -560,14 +571,10 @@ int main( int argc, char *argv[] )
 	int nCells;
 	int nPts;
     initCUDA();
-	clock_t t1 = clock();
-	compute_time = (t1 - t0) * 1000 / CLOCKS_PER_SEC;
 
-    cout<<"Time: initiate CUDA:"<< (float)compute_time * 0.001 << "sec" << endl;
-    //vector<vector<point> > clippedPoly = 
-	//runCUDA(points_s, cell_s, points_c, cell_c);
+    PrintElapsedTime("initiate CUDA");
 
-	runCUDA(filename_subject, filename_constraint, binStep, points, cells, nCells, nPts, _nBlock);
+    runCUDA(filename_subject.c_str(), filename_constraint.c_str(), binStep, points, cells, nCells, nPts, _nBlock);
 #else
 	clock_t t1 = clock();
     vector<triangle> trias_c;
@@ -607,9 +614,7 @@ int main( int argc, char *argv[] )
 	clipSets(trias_s, trias_c, cellsInBin, 	pts_vec, idx_array, nPts);
 
 #endif
-    clock_t t2 = clock();
-	compute_time = (t2 - t1) * 1000 / CLOCKS_PER_SEC;
-    cout<<"Entire computing time:"<< (float)compute_time * 0.001 << "sec" << endl;
+    PrintElapsedTime("Entire computing time");
 
 #if PARALLEL_ON
 	writePolygonFileFastArray("data/clipped_parallel.vtk", points, cells, nCells, nPts);
@@ -619,10 +624,7 @@ int main( int argc, char *argv[] )
 	writePolygonFileFastArray("data/clipped_serial.vtk", &pts_vec[0], &idx_array[0], idx_array.size() - nPts, nPts);
 #endif
 
-    clock_t t3 = clock();
-    compute_time = (t3 - t2) * 1000 / CLOCKS_PER_SEC;
-    cout<<"Write file time:"<< (float)compute_time * 0.001 << "sec" << endl;
-
+    PrintElapsedTime("write file");
  //   writePolygonFile("data/CAM_0_small_clipped.vtk", clippedPoly);
     return 1;
 }

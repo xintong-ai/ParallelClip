@@ -34,7 +34,7 @@
 #define M_PI_180 0.01745329252f
 #define M_180_PI 57.29577951f
 #define M_PI       3.14159265358979323846
-#define M_PI_4     0.785398163397448309616
+//#define M_PI_4     0.785398163397448309616
 #define M_PI_2     1.57079632679489661923
 
 __constant__ int N_BIN_X;//= 0.02;		
@@ -1457,7 +1457,7 @@ void runKernel(float* trglCoords_s, float* trglCoords_c, thrust::device_vector<i
 	CudaCheckError();
 #endif
 
-	clip_kernel<<<grid, block>>>
+    clip_kernel<<<grid, block>>>
 		((triangle*)trglCoords_s, (triangle*)trglCoords_c, 
 		d_raw_ptr_trglPair, npair, 
 		d_clipped_vert, d_clipped_n_vert,
@@ -1615,21 +1615,21 @@ struct assign_triangle_coords
 		trgl2 twoTrgls;
 		if(dot(p0_p2, p0_p2) < dot(p1_p3, p1_p3))
 		{
-			get<0>(twoTrgls) = p0;
-			get<1>(twoTrgls) = p1;
-			get<2>(twoTrgls) = p2;
-			get<3>(twoTrgls) = p0;
-			get<4>(twoTrgls) = p2;
-			get<5>(twoTrgls) = p3;
+            thrust::get<0>(twoTrgls) = p0;
+            thrust::get<1>(twoTrgls) = p1;
+            thrust::get<2>(twoTrgls) = p2;
+            thrust::get<3>(twoTrgls) = p0;
+            thrust::get<4>(twoTrgls) = p2;
+            thrust::get<5>(twoTrgls) = p3;
 		}
 		else
 		{
-			get<0>(twoTrgls) = p0;
-			get<1>(twoTrgls) = p1;
-			get<2>(twoTrgls) = p3;
-			get<3>(twoTrgls) = p1;
-			get<4>(twoTrgls) = p2;
-			get<5>(twoTrgls) = p3;
+            thrust::get<0>(twoTrgls) = p0;
+            thrust::get<1>(twoTrgls) = p1;
+            thrust::get<2>(twoTrgls) = p3;
+            thrust::get<3>(twoTrgls) = p1;
+            thrust::get<4>(twoTrgls) = p2;
+            thrust::get<5>(twoTrgls) = p3;
 		}
 		thrust::get<1>(t) = twoTrgls;
 	}
@@ -2122,7 +2122,7 @@ void GetSearchStruct(thrust::device_vector<trgl2> &trglCoords_s, vtkPoints* vtkP
 	thrust::tuple<double, double, double>* pointCoords_s = (thrust::tuple<double, double, double>*)vtkPts_s->GetVoidPointer(0);
 	int nPoints = vtkPts_s->GetNumberOfPoints();
 	clock_t t_1 = clock();
-	thrust::device_vector<thrust::tuple<double, double, double>> d_vec_vtkPtsCoords_s
+    thrust::device_vector<thrust::tuple<double, double, double> > d_vec_vtkPtsCoords_s
 		(pointCoords_s, pointCoords_s + nPoints);
 	clock_t t0 = clock();
 	unsigned long compute_time = (t0 - t_1) * 1000 / CLOCKS_PER_SEC;
@@ -2546,7 +2546,7 @@ void GetPairs(thrust::device_vector<float3> d_vec_pointAxisAngle_s, thrust::devi
 
 
 __host__ void runCUDA(/*vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, vtkPoints* vtkPts_c, vtkCellArray* vtkCls_c,*/
-	char* filename_subject, char* filename_constraint, float binStep,
+    const char* filename_subject, const char* filename_constraint, float binStep,
 	float* &points, vtkIdType* &cells, int &nCells, int &nPts, int nBlock)
 {
 	_nBinX = ceil((float)M_PI_2 / binStep);

@@ -192,5 +192,5 @@ vector<float2> clip_serial(triangle t_s, triangle t_c);
 
 //__host__ void runCUDA(vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, vtkPoints* vtkPts_c, vtkCellArray* vtkCls_c);
 __host__ void runCUDA(/*vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, vtkPoints* vtkPts_c, vtkCellArray* vtkCls_c,*/
-	char* filename_subject, char* filename_constraint, float binStep,
+    const char* filename_subject, const char* filename_constraint, float binStep,
 	float* &points, vtkIdType* &cells, int &nCells, int &nPts, int nBlock);
