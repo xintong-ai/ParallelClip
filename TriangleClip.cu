@@ -34,7 +34,9 @@
 #define M_PI_180 0.01745329252f
 #define M_180_PI 57.29577951f
 #define M_PI       3.14159265358979323846
-//#define M_PI_4     0.785398163397448309616
+#ifndef M_PI_4
+	#define M_PI_4     0.785398163397448309616
+#endif
 #define M_PI_2     1.57079632679489661923
 
 __constant__ int N_BIN_X;//= 0.02;		
@@ -2272,7 +2274,9 @@ void GetSearchStruct(thrust::device_vector<trgl2> &trglCoords_s, vtkPoints* vtkP
 	//output: search structure int2(bin index, triangle index)
 	//thrust::device_vector<int2> d_vec_searchStruct(numBins);
 	//cout<<"size_search_structure:"<<numBins<<endl;
+    cout<<"numBins:"<<numBins<<endl;
 	d_vec_searchStruct.resize(numBins);
+
 	int2* d_raw_ptr_searchStruct = raw_pointer_cast(d_vec_searchStruct.data());
 	//compute search structure:
 	thrust::for_each(thrust::make_zip_iterator(thrust::make_tuple(d_ptr_trglAxisAngle_s, d_vec_searchStructOffset.begin(),first)),
