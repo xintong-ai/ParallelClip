@@ -18,6 +18,7 @@
 //#include <math_constants.h>
 //#include <math_functions.h>
 
+//static clock_t _t0;
 
 
 
@@ -26,7 +27,7 @@
 #define N_INSTR 14
 #define CUDA_ERROR_CHECK
 #define RADIUS 1
-#define CHECK_ERROR_ON 0
+#define CHECK_ERROR_ON 1
 
 #define CudaSafeCall( err ) __cudaSafeCall( err, __FILE__, __LINE__ )
 #define CudaCheckError()    __cudaCheckError( __FILE__, __LINE__ )
@@ -2121,14 +2122,16 @@ struct functor_BoundNoOverlap
 void GetSearchStruct(thrust::device_vector<trgl2> &trglCoords_s, vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s,
 	thrust::device_vector<int2> &d_vec_searchStruct, thrust::device_vector<float3> &d_vec_pointAxisAngle_s)//, int &numBins)
 {
+	cout<<"**1"<<endl;
 	thrust::tuple<double, double, double>* pointCoords_s = (thrust::tuple<double, double, double>*)vtkPts_s->GetVoidPointer(0);
 	int nPoints = vtkPts_s->GetNumberOfPoints();
-	clock_t t_1 = clock();
+	//clock_t t_1 = clock();
     thrust::device_vector<thrust::tuple<double, double, double> > d_vec_vtkPtsCoords_s
 		(pointCoords_s, pointCoords_s + nPoints);
-	clock_t t0 = clock();
-	unsigned long compute_time = (t0 - t_1) * 1000 / CLOCKS_PER_SEC;
-    cout<<"**Time in search structure: loading VTK point data:"<< (float)compute_time * 0.001 << "sec" << endl;
+	//clock_t t0 = clock();
+	//unsigned long compute_time = (t0 - t_1) * 1000 / CLOCKS_PER_SEC;
+ //   cout<<"**Time :"<< (float)compute_time * 0.001 << "sec" << endl;
+	PrintElapsedTime("in search structure: loading VTK point data");
 
 	/*****remove the z coordinates*****/
 	thrust::device_vector<float2> d_vec_vtkPts_s(nPoints);
@@ -2136,9 +2139,10 @@ void GetSearchStruct(thrust::device_vector<trgl2> &trglCoords_s, vtkPoints* vtkP
 	
 	
 	transform(d_vec_vtkPtsCoords_s.begin(), d_vec_vtkPtsCoords_s.end(), d_vec_vtkPts_s.begin(), remove_z());
-	clock_t t1 = clock();
+	/*clock_t t1 = clock();
 	compute_time = (t1 - t0) * 1000 / CLOCKS_PER_SEC;
-    cout<<"**Time in search structure: remove z coordinate:"<< (float)compute_time * 0.001 << "sec" << endl;
+    cout<<"**Time in search structure: remove z coordinate:"<< (float)compute_time * 0.001 << "sec" << endl;*/
+	PrintElapsedTime("in search structure: remove z coordinate");
 	
 	/**********Points index for each Cell********/
 	int nCells_s = vtkCls_s->GetNumberOfCells();
@@ -2165,9 +2169,10 @@ void GetSearchStruct(thrust::device_vector<trgl2> &trglCoords_s, vtkPoints* vtkP
 		thrust::make_zip_iterator(thrust::make_tuple(d_vec_vtkCls_vec5_s + nCells_s, trglCoords_s.end())), 
 		assign_triangle_coords(ptsCoords_s));
 
-	clock_t t2 = clock();
+	/*clock_t t2 = clock();
     compute_time = (t2 - t1) * 1000 / CLOCKS_PER_SEC;
-    cout<<"**Time in search structure: generate array to put triangle coordinates:"<< (float)compute_time * 0.001 << "sec" << endl;
+    cout<<"**Time in search structure: generate array to put triangle coordinates:"<< (float)compute_time * 0.001 << "sec" << endl;*/
+	PrintElapsedTime("in search structure: generate array to put triangle coordinates");
 
 	//for(int i = 0; i < 4; i++)
 	//{
@@ -2193,9 +2198,10 @@ void GetSearchStruct(thrust::device_vector<trgl2> &trglCoords_s, vtkPoints* vtkP
 	//computing
 	thrust::transform(d_ptr_pointGeoCoords_s, d_ptr_pointGeoCoords_s + nVertex, 
 		d_vec_pointAxisAngle_s.begin(), functor_getAxisAngle());
-	clock_t t3 = clock();
+	/*clock_t t3 = clock();
     compute_time = (t3 - t2) * 1000 / CLOCKS_PER_SEC;
-     cout<<"**Time in search structure: compute axis angle:"<< (float)compute_time * 0.001 << "sec" << endl;
+     cout<<"**Time in search structure: compute axis angle:"<< (float)compute_time * 0.001 << "sec" << endl;*/
+	PrintElapsedTime("in search structure: compute axis angle");
 	//cout<<"axis angle:"<<endl;
 	//for(int i = 0; i < 4; i++)
 	//{
@@ -2234,10 +2240,12 @@ void GetSearchStruct(thrust::device_vector<trgl2> &trglCoords_s, vtkPoints* vtkP
 		d_vec_numBinPerTrgl.begin(), functor_getNumBin());
 
 
-	clock_t t4 = clock();
-    compute_time = (t4 - t3) * 1000 / CLOCKS_PER_SEC;
-     cout<<"**Time in search structure: number of bins for each triangle :"<< (float)compute_time * 0.001 << "sec" << endl;
-	//cout<<"nTrgl:"<<nTrgl<<endl;
+	//clock_t t4 = clock();
+ //   compute_time = (t4 - t3) * 1000 / CLOCKS_PER_SEC;
+ //    cout<<"**Time in search structure: number of bins for each triangle :"<< (float)compute_time * 0.001 << "sec" << endl;
+	PrintElapsedTime("in search structure: number of bins for each triangle ");
+	
+	 //cout<<"nTrgl:"<<nTrgl<<endl;
 	// thrust::sort(d_vec_numBinPerTrgl.begin(), d_vec_numBinPerTrgl.end());
 	//cout<<"number of bins:"<<endl;
 	//for(int i = 0; i < 50; i ++)
@@ -2255,9 +2263,10 @@ void GetSearchStruct(thrust::device_vector<trgl2> &trglCoords_s, vtkPoints* vtkP
 	thrust::exclusive_scan(thrust::device, d_vec_numBinPerTrgl.begin(), d_vec_numBinPerTrgl.end(), 
 		d_vec_searchStructOffset.begin()); 
 
-		clock_t t5 = clock();
-    compute_time = (t5 - t4) * 1000 / CLOCKS_PER_SEC;
-     cout<<"**Time in search structure: scan for offset:"<< (float)compute_time * 0.001 << "sec" << endl;
+	//clock_t t5 = clock();
+ //   compute_time = (t5 - t4) * 1000 / CLOCKS_PER_SEC;
+ //    cout<<"**Time in search structure: scan for offset:"<< (float)compute_time * 0.001 << "sec" << endl;
+	PrintElapsedTime("in search structure: scan for offset");
 
 	//cout<<"offset:"<<endl;
 	//for(int i = 0; i < 32; i++)
@@ -2283,9 +2292,10 @@ void GetSearchStruct(thrust::device_vector<trgl2> &trglCoords_s, vtkPoints* vtkP
 		thrust::make_zip_iterator(thrust::make_tuple(d_ptr_trglAxisAngle_s + nTrgl, d_vec_searchStructOffset.end(), last)), 
 		functor_fillSearchStruct(d_raw_ptr_searchStruct));
 
-		clock_t t6 = clock();
-    compute_time = (t6 - t5) * 1000 / CLOCKS_PER_SEC;
-     cout<<"**Time in search structure: time to input bins for each triangle:"<< (float)compute_time * 0.001 << "sec" << endl;
+		//clock_t t6 = clock();
+  //  compute_time = (t6 - t5) * 1000 / CLOCKS_PER_SEC;
+  //   cout<<"**Time in search structure: time to input bins for each triangle:"<< (float)compute_time * 0.001 << "sec" << endl;
+	PrintElapsedTime("in search structure: input bins for each triangle");
 
 	thrust::device_ptr<int2> d_ptr_searchStruct(d_raw_ptr_searchStruct);
 
@@ -2309,9 +2319,10 @@ void GetSearchStruct(thrust::device_vector<trgl2> &trglCoords_s, vtkPoints* vtkP
 	//	cout<<temp.x <<","<<temp.y<<endl;
 	//}
 
-		clock_t t7 = clock();
+	/*	clock_t t7 = clock();
 	compute_time = (t7 - t6) * 1000 / CLOCKS_PER_SEC;
-     cout<<"**Time in search structure: sort based on bin number:"<< (float)compute_time * 0.001 << "sec" << endl;
+     cout<<"**Time in search structure: sort based on bin number:"<< (float)compute_time * 0.001 << "sec" << endl;*/
+	PrintElapsedTime("in search structure: sort based on bin number");
 
 //	return d_vec_searchStruct;
 //	searchStruct = d_ptr_searchStruct;
@@ -2557,13 +2568,13 @@ __host__ void runCUDA(/*vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, vtkPoints* 
 	_nBinY = ceil((float)M_PI_2 / binStep);
 
     unsigned long compute_time;
-	clock_t t0 = clock();
+	//clock_t t0 = clock();
 	cudaMemcpyToSymbol(BIN_STEP_X, &binStep, sizeof(float));
+
+	cout<<"binStep:"<<binStep<<endl;
 	
-	clock_t t1 = clock();
-	compute_time = (t1 - t0) * 1000 / CLOCKS_PER_SEC;
-    cout<<"Time: first CUDA call (initialization):"<< (float)compute_time * 0.001 << "sec" << endl;
-	
+	PrintElapsedTime("Time: first CUDA call (initialization):");
+
 	cudaMemcpyToSymbol(BIN_STEP_Y, &binStep, sizeof(float));
 
 	cudaMemcpyToSymbol(N_BIN_X, &_nBinX, sizeof(int));
@@ -2605,23 +2616,26 @@ __host__ void runCUDA(/*vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, vtkPoints* 
 	thrust::device_vector<float3> d_vec_pointAxisAngle_s;
 	thrust::device_vector<float3> d_vec_pointAxisAngle_c;
 
+	PrintElapsedTime("read files");
+
 	GetSearchStruct(trglCoords_s, points_s, cell_s, searchStruct_s, d_vec_pointAxisAngle_s);
 	GetSearchStruct(trglCoords_c, points_c, cell_c, searchStruct_c, d_vec_pointAxisAngle_c);
 
 	float* d_raw_ptr_trglCoords_s = (float*)thrust::raw_pointer_cast(trglCoords_s.data());
 	float* d_raw_ptr_trglCoords_c = (float*)thrust::raw_pointer_cast(trglCoords_c.data());
 
-    clock_t t2 = clock();
-	compute_time = (t2 - t1) * 1000 / CLOCKS_PER_SEC;
-    cout<<"Time: generate search structure:"<< (float)compute_time * 0.001 << "sec" << endl;
-
+ //   clock_t t2 = clock();
+	//compute_time = (t2 - t1) * 1000 / CLOCKS_PER_SEC;
+ //   cout<<"Time: :"<< (float)compute_time * 0.001 << "sec" << endl;
+	PrintElapsedTime("generate search structure");
 
 	thrust::device_vector<int2> trglPair;
 	GetPairs(d_vec_pointAxisAngle_s, d_vec_pointAxisAngle_c, searchStruct_s, searchStruct_c, trglPair);
 
-	clock_t t3 = clock();
+	/*clock_t t3 = clock();
     compute_time = (t3 - t2) * 1000 / CLOCKS_PER_SEC;
-    cout<<"Time: indices of a pair of triangle index:"<< (float)compute_time * 0.001 << "sec" << endl;
+    cout<<"Time: indices of a pair of triangle index:"<< (float)compute_time * 0.001 << "sec" << endl;*/
+	PrintElapsedTime("indices of a pair of triangle index");
 
 
 	runKernel(d_raw_ptr_trglCoords_s, d_raw_ptr_trglCoords_c, trglPair, points, cells, nCells, nPts, nBlock);//the 512 may not always be a good number.

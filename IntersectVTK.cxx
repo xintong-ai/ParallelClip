@@ -11,8 +11,8 @@
 #include "string"
 
 #define PARALLEL_ON 1
-#define FILE_DIR "/media/User/Dropbox/sandia/ParallelClip-build/data/"
-//#define FILE_DIR "D:/Dropbox/sandia/ParallelClip-build/data/"
+//#define FILE_DIR "/media/User/Dropbox/sandia/ParallelClip-build/data/"
+#define FILE_DIR "D:/Dropbox/sandia/ParallelClip-build/data/"
  
 #include "clip.h"
 
@@ -33,7 +33,6 @@ static int rangeY = Y_MAX - Y_MIN;
 static int nbinX = rangeX / STEP_X;
 static int nbinY = rangeY / STEP_Y;
 static int nbin = nbinX * nbinY;
-static clock_t _t0;
 
 int _nBlock;
 
@@ -526,14 +525,7 @@ void CheckVTKFiles()
 	reader2->CloseVTKFile();
 }
 
-void PrintElapsedTime(char* msg)
-{
-    clock_t t = clock();
-    clock_t compute_time = (t - _t0) * 1000 / CLOCKS_PER_SEC;
-    _t0 = t;
 
-    cout<<"Took "<< (float)compute_time * 0.001 << " sec to "<< msg << endl;
-}
 
 int main( int argc, char *argv[] )
 {
@@ -541,10 +533,10 @@ int main( int argc, char *argv[] )
     string fileDir = FILE_DIR;
     string filename_constraint = FILE_DIR;
     string filename_subject = FILE_DIR;
-//    filename_constraint.append("CAM_1_vec.vtk");
-//    filename_subject.append("CAM_1_vec_warped_5times.vtk");
-    filename_constraint.append("CAM_1_vec_resampled.vtk");
-    filename_subject.append("CAM_1_vec_resampled_warped.vtk");
+    filename_constraint.append("cam_1_vec.vtk");
+    filename_subject.append("cam_1_vec_warped_5times.vtk");
+    //filename_constraint.append("CAM_1_vec_resampled.vtk");
+    //filename_subject.append("CAM_1_vec_resampled_warped.vtk");
 
     cout<<"filename_constraint:"<<filename_constraint <<endl;
     cout<<"filename_subject:"<<filename_subject <<endl;

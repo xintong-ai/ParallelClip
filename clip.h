@@ -16,6 +16,7 @@ using namespace std;
 //#define EPS5 1E-4
 
 //static int cnt = 0;
+static clock_t _t0;
 
 #if NVCC_ON
 #include <cuda_runtime.h>
@@ -194,3 +195,12 @@ vector<float2> clip_serial(triangle t_s, triangle t_c);
 __host__ void runCUDA(/*vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, vtkPoints* vtkPts_c, vtkCellArray* vtkCls_c,*/
     const char* filename_subject, const char* filename_constraint, float binStep,
 	float* &points, vtkIdType* &cells, int &nCells, int &nPts, int nBlock);
+
+inline void PrintElapsedTime(char* msg)
+{
+    clock_t t = clock();
+    clock_t compute_time = (t - _t0) * 1000 / CLOCKS_PER_SEC;
+    _t0 = t;
+
+    cout<<"Took "<< (float)compute_time * 0.001 << " sec to "<< msg << endl;
+}
