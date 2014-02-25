@@ -11,8 +11,8 @@
 #include "string"
 
 #define PARALLEL_ON 1
-//#define FILE_DIR "/media/User/Dropbox/sandia/ParallelClip-build/data/"
-#define FILE_DIR "D:/Dropbox/sandia/ParallelClip-build/data/"
+#define FILE_DIR "/media/User/Dropbox/sandia/ParallelClip-build/data/"
+//#define FILE_DIR "D:/Dropbox/sandia/ParallelClip-build/data/"
  
 #include "clip.h"
 
@@ -533,15 +533,16 @@ int main( int argc, char *argv[] )
     string fileDir = FILE_DIR;
     string filename_constraint = FILE_DIR;
     string filename_subject = FILE_DIR;
-    filename_constraint.append("cam_1_vec.vtk");
-    filename_subject.append("cam_1_vec_warped_5times.vtk");
-    //filename_constraint.append("CAM_1_vec_resampled.vtk");
-    //filename_subject.append("CAM_1_vec_resampled_warped.vtk");
+    filename_constraint.append("CAM_1_vec.vtk");
+    filename_subject.append("CAM_1_vec_warped_5times.vtk");
+//    filename_constraint.append("CAM_1_vec_resampled_warped.vtk");
+//    filename_subject.append("CAM_1_vec_resampled.vtk");
 
     cout<<"filename_constraint:"<<filename_constraint <<endl;
     cout<<"filename_subject:"<<filename_subject <<endl;
 
-    float binStep = 0.5;
+    //0.01 is the optimal step size for original data without resampling
+    float binStep = 0.01;
 
 	if(argc > 1)
 		_nBlock = strtol(argv[1], NULL, 10);

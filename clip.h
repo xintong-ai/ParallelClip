@@ -204,3 +204,4 @@ inline void PrintElapsedTime(char* msg)
 
     cout<<"Took "<< (float)compute_time * 0.001 << " sec to "<< msg << endl;
 }
+
