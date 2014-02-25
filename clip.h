@@ -202,6 +202,7 @@ inline void PrintElapsedTime(char* msg)
     clock_t compute_time = (t - _t0) * 1000 / CLOCKS_PER_SEC;
     _t0 = t;
 
-    cout<<"Took "<< (float)compute_time * 0.001 << " sec to "<< msg << endl;
+    //cout<< (float)compute_time * 0.001 << "\t sec to "<< msg << endl;
+    printf("%f\tsec to %s\n", (float)compute_time * 0.001 , msg);
 }
 

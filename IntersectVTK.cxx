@@ -10,7 +10,7 @@
 #include <vtkFloatArray.h>
 #include "string"
 
-#define PARALLEL_ON 1
+#define PARALLEL_ON 0
 #define FILE_DIR "/media/User/Dropbox/sandia/ParallelClip-build/data/"
 //#define FILE_DIR "D:/Dropbox/sandia/ParallelClip-build/data/"
  
@@ -533,10 +533,10 @@ int main( int argc, char *argv[] )
     string fileDir = FILE_DIR;
     string filename_constraint = FILE_DIR;
     string filename_subject = FILE_DIR;
-    filename_constraint.append("CAM_1_vec.vtk");
-    filename_subject.append("CAM_1_vec_warped_5times.vtk");
-//    filename_constraint.append("CAM_1_vec_resampled_warped.vtk");
-//    filename_subject.append("CAM_1_vec_resampled.vtk");
+//    filename_constraint.append("CAM_1_vec.vtk");
+//    filename_subject.append("CAM_1_vec_warped_5times.vtk");
+    filename_constraint.append("CAM_1_vec_resampled_warped.vtk");
+    filename_subject.append("CAM_1_vec_resampled.vtk");
 
     cout<<"filename_constraint:"<<filename_constraint <<endl;
     cout<<"filename_subject:"<<filename_subject <<endl;
@@ -578,7 +578,7 @@ int main( int argc, char *argv[] )
 	vtkSmartPointer<vtkUnstructuredGridReader> reader =
       vtkSmartPointer<vtkUnstructuredGridReader>::New();
 
-    reader->SetFileName(filename_constraint);
+    reader->SetFileName(filename_constraint.c_str());
     reader->Update(); // Needed because of GetScalarRange
     vtkUnstructuredGrid* grid_c = reader->GetOutput();
     vtkPoints* points_c = grid_c->GetPoints();
@@ -591,7 +591,7 @@ int main( int argc, char *argv[] )
 
 	vtkSmartPointer<vtkUnstructuredGridReader> reader2 =
       vtkSmartPointer<vtkUnstructuredGridReader>::New();
-    reader2->SetFileName(filename_subject);
+    reader2->SetFileName(filename_subject.c_str());
     reader2->Update();
     vtkUnstructuredGrid* grid_s = reader2->GetOutput();
     vtkPoints* points_s = grid_s->GetPoints();
@@ -600,14 +600,19 @@ int main( int argc, char *argv[] )
 
 
     ImportTriangles(points_s, cell_s, trias_s);
+
+    PrintElapsedTime("read data");
+
     vector<vector<int> > cellsInBin = Binning(trias_c);
 	vector<float> pts_vec;
 	vector<vtkIdType> idx_array;
 	int nPts = 0;
+
 	clipSets(trias_s, trias_c, cellsInBin, 	pts_vec, idx_array, nPts);
+    PrintElapsedTime("clip triangles");
 
 #endif
-    PrintElapsedTime("Entire computing time");
+//    PrintElapsedTime("Entire computing time");
 
 #if PARALLEL_ON
 	writePolygonFileFastArray("data/clipped_parallel.vtk", points, cells, nCells, nPts);
