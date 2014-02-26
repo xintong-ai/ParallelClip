@@ -533,10 +533,10 @@ int main( int argc, char *argv[] )
     string fileDir = FILE_DIR;
     string filename_constraint = FILE_DIR;
     string filename_subject = FILE_DIR;
-//    filename_constraint.append("CAM_1_vec.vtk");
-//    filename_subject.append("CAM_1_vec_warped_5times.vtk");
-    filename_constraint.append("CAM_1_vec_resampled_warped.vtk");
-    filename_subject.append("CAM_1_vec_resampled.vtk");
+    filename_constraint.append("CAM_1_vec.vtk");
+    filename_subject.append("CAM_1_vec_warped_5times.vtk");
+//    filename_constraint.append("CAM_1_vec_resampled.vtk");
+//    filename_subject.append("CAM_1_vec_resampled_warped.vtk");
 
     cout<<"filename_constraint:"<<filename_constraint <<endl;
     cout<<"filename_subject:"<<filename_subject <<endl;
