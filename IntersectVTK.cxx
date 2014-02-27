@@ -10,7 +10,7 @@
 #include <vtkFloatArray.h>
 #include "string"
 
-#define PARALLEL_ON 0
+#define PARALLEL_ON 1
 #define FILE_DIR "/media/User/Dropbox/sandia/ParallelClip-build/data/"
 //#define FILE_DIR "D:/Dropbox/sandia/ParallelClip-build/data/"
  
@@ -378,8 +378,8 @@ void clipSets(vector<triangle> t_s, vector<triangle> t_c, vector<vector<int> > c
                 polyPairs.push_back(pr);
             }
         }
-		if(is % 10000 == 0)	
-			cout<<"is = "<< is << endl;
+//        if(is % 100000 == 0)
+//			cout<<"is = "<< is << endl;
     }
 //	cout<<"polyPair.size()"<<polyPairs.size()<<endl;
 	//polyPairs.assign(polyPairs.begin() + 17950, polyPairs.end());
@@ -413,8 +413,8 @@ void clipSets(vector<triangle> t_s, vector<triangle> t_c, vector<vector<int> > c
 	//printTrgl(t_s[88008]);
     for(int i = 0; i < polyPairs.size(); i++)
     {
-        if((i % 100000) == 0)
-			cout<<"i = "<<i<<endl;
+//        if((i % 100000) == 0)
+//			cout<<"i = "<<i<<endl;
 		//cout <<"is = "<<polyPairs[i].is<<endl;
 		//cout <<"ic = "<<polyPairs[i].ic<<endl;
 		vector<float2> clipped;
@@ -530,13 +530,14 @@ void CheckVTKFiles()
 int main( int argc, char *argv[] )
 {
     //CheckVTKFiles();
-    string fileDir = FILE_DIR;
     string filename_constraint = FILE_DIR;
     string filename_subject = FILE_DIR;
 //    filename_constraint.append("CAM_1_vec.vtk");
 //    filename_subject.append("CAM_1_vec_warped_5times.vtk");
-    filename_constraint.append("CAM_1_vec_resampled_warped.vtk");
-    filename_subject.append("CAM_1_vec_resampled.vtk");
+//    filename_constraint.append("CAM_1_vec_resampled_warped.vtk");
+//    filename_subject.append("CAM_1_vec_resampled.vtk");
+    filename_constraint.append(argv[3]);
+    filename_subject.append(argv[4]);
 
     cout<<"filename_constraint:"<<filename_constraint <<endl;
     cout<<"filename_subject:"<<filename_subject <<endl;
@@ -553,6 +554,7 @@ int main( int argc, char *argv[] )
 		binStep = ::atof(argv[2]);
 
     _t0 = clock();
+    clock_t t_total_start = clock();
 
 	cout<<"CUDA block size: "<<_nBlock<<endl;
 	cout<<"Size of Bin (radian): "<<binStep<<endl;
@@ -565,7 +567,7 @@ int main( int argc, char *argv[] )
 	int nPts;
     initCUDA();
 
-    PrintElapsedTime("initiate CUDA");
+//    PrintElapsedTime("initiate CUDA");
 
     runCUDA(filename_subject.c_str(), filename_constraint.c_str(), binStep, points, cells, nCells, nPts, _nBlock);
 #else
@@ -613,9 +615,12 @@ int main( int argc, char *argv[] )
 
 #endif
 //    PrintElapsedTime("Entire computing time");
+    clock_t compute_time = (clock() - t_total_start) * 1000 / CLOCKS_PER_SEC;
+    printf("%f\tsec to %s\n", (float)compute_time * 0.001 , "to run the entire program(not including writing file)");
 
 #if PARALLEL_ON
 	writePolygonFileFastArray("data/clipped_parallel.vtk", points, cells, nCells, nPts);
+    cout<<nCells<<"\tpolygons are generated"<<endl;
 #else
 	//cout<<"ncell, npts"<<idx_array.size()<<","<<nPts<<endl;
 	//cout<<"idx_array.size():"<<idx_array.size()<<endl;

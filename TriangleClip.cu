@@ -27,7 +27,7 @@
 #define N_INSTR 14
 #define CUDA_ERROR_CHECK
 #define RADIUS 1
-#define CHECK_ERROR_ON 1
+#define CHECK_ERROR_ON 0
 
 #define CudaSafeCall( err ) __cudaSafeCall( err, __FILE__, __LINE__ )
 #define CudaCheckError()    __cudaCheckError( __FILE__, __LINE__ )
@@ -51,7 +51,7 @@ int _nBinY;
 
 inline void PrintFreeMemory()
 {
-    //return;
+    return;
     size_t free;
     size_t total;
     CUresult result = cuMemGetInfo(&free, &total);
@@ -1468,6 +1468,12 @@ void runKernel(float* trglCoords_s, float* trglCoords_c, thrust::device_vector<i
 #if CHECK_ERROR_ON
 	CudaCheckError();
 #endif
+    cudaEvent_t start, stop;
+    float time;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
+    cudaEventRecord(start, 0);
 
     clip_kernel<<<grid, block>>>
 		((triangle*)trglCoords_s, (triangle*)trglCoords_c, 
@@ -1475,7 +1481,12 @@ void runKernel(float* trglCoords_s, float* trglCoords_c, thrust::device_vector<i
 		d_clipped_vert, d_clipped_n_vert,
 		d_state);
 
-    PrintElapsedTime("triangle clipping");
+    cudaEventRecord(stop, 0);
+    cudaEventSynchronize(stop);
+
+    cudaEventElapsedTime(&time, start, stop);
+    printf("%f\tms to %s\n", time, "triangle clipping");
+    //PrintElapsedTime();
 	
 
 #if CHECK_ERROR_ON
@@ -1529,7 +1540,7 @@ void runKernel(float* trglCoords_s, float* trglCoords_c, thrust::device_vector<i
 #if CHECK_ERROR_ON
 	CudaCheckError();
 #endif
-    PrintElapsedTime("reduce result");
+    PrintElapsedTime("triangle clipping and reduce result");
 
 	float3* h_points = (float3*)malloc(mem_size_points);
 	cudaMemcpy(h_points, d_points, mem_size_points, cudaMemcpyDeviceToHost);
@@ -2453,13 +2464,13 @@ __host__ void runCUDA(/*vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, vtkPoints* 
 	_nBinY = ceil((float)M_PI_2 / binStep);
 
 	cudaMemcpyToSymbol(BIN_STEP_X, &binStep, sizeof(float));
-	
-	PrintElapsedTime("Time: first CUDA call (initialization):");
 
 	cudaMemcpyToSymbol(BIN_STEP_Y, &binStep, sizeof(float));
 
 	cudaMemcpyToSymbol(N_BIN_X, &_nBinX, sizeof(int));
 	cudaMemcpyToSymbol(N_BIN_Y, &_nBinY, sizeof(int));
+
+    PrintElapsedTime("Time: initialization(includig first CUDA call):");
 
 #if CHECK_ERROR_ON
 	CudaCheckError();
@@ -2510,7 +2521,7 @@ __host__ void runCUDA(/*vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, vtkPoints* 
     else if(points_s->GetDataType() == VTK_DOUBLE)
         GetSearchStruct<double>(trglCoords_c, points_c, cell_c, searchStruct_c, d_vec_pointAxisAngle_c);
 
-    PrintElapsedTime("build search structure (including copy data from host to device)");
+    //PrintElapsedTime("build search structure (including copy data from host to device)");
 
 	float* d_raw_ptr_trglCoords_s = (float*)thrust::raw_pointer_cast(trglCoords_s.data());
 	float* d_raw_ptr_trglCoords_c = (float*)thrust::raw_pointer_cast(trglCoords_c.data());
@@ -2521,7 +2532,7 @@ __host__ void runCUDA(/*vtkPoints* vtkPts_s, vtkCellArray* vtkCls_s, vtkPoints* 
 	GetPairs(d_vec_pointAxisAngle_s, d_vec_pointAxisAngle_c, searchStruct_s, searchStruct_c, trglPair);
 
 
-    PrintElapsedTime("generate pairs(including removing no bouding box overlap, and duplication)");
+    PrintElapsedTime("build search structure and generate pairs");//(including removing no bouding box overlap, and duplication)");
     PrintFreeMemory();
 
 	runKernel(d_raw_ptr_trglCoords_s, d_raw_ptr_trglCoords_c, trglPair, points, cells, nCells, nPts, nBlock);//the 512 may not always be a good number.
